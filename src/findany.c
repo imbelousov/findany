@@ -227,6 +227,10 @@ bool trie_find(ssize_t idx, char* str, size_t length)
 
 bool filter_input(char* str, size_t length)
 {
+    if (str[length - 1] == '\n')
+        length--;
+    if (str > 0 && str[length - 1] == '\r')
+        length--;
     for (size_t i = 0; i < length; i++)
     {
         if (trie_find(0, str + i, length - i))
@@ -255,10 +259,6 @@ void scan_input()
     size_t read;
     while ((read = read_line(&buffer, &buffer_size, fp)) > 0)
     {
-        if (buffer[read - 1] == '\n')
-            read--;
-        if (read > 0 && buffer[read - 1] == '\r')
-            read--;
         if (filter_input(buffer, read))
             fwrite(buffer, 1, read, stdout);
     }
