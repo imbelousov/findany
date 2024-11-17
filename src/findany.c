@@ -80,7 +80,7 @@ size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
 
         offset = buffer_size_ - 1;
         buffer_size_ *= 2;
-        buffer_ = realloc(*buffer, buffer_size_);
+        buffer_ = realloc(buffer_, buffer_size_);
         if (buffer_ == NULL)
             exit(EXIT_FAILURE);
         buffer_[buffer_size_ - 1] = READ_LINE_BUFFER_MARK;
