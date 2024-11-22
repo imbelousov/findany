@@ -80,7 +80,7 @@ size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
     int c;
     while ((c = getcbuf(fp)) != EOF)
     {
-        if (read >= buffer_size_)
+        if (read >= buffer_size_ - 1)
         {
             buffer_size_ *= 2;
             buffer_ = realloc(buffer_, buffer_size_);
@@ -89,11 +89,9 @@ size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
         }
         buffer_[read++] = c;
         if (c == '\n')
-        {
-            buffer_[read] = '\0';
             break;
-        }
     }
+    buffer_[read] = '\0';
 
     *buffer = buffer_;
     *buffer_size = buffer_size_;
