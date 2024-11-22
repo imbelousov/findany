@@ -37,7 +37,7 @@ void print_help()
 
 #define GETCBUF_BUFFER_SIZE 64 * 1024
 
-static int getcbuf(FILE* fp)
+int getcbuf(FILE* fp)
 {
     static unsigned char buffer[GETCBUF_BUFFER_SIZE];
     static size_t buffer_offset = 0;
