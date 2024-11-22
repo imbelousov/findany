@@ -35,6 +35,25 @@ void print_help()
     printf("  -h, --help                print this help\n");
 }
 
+#define GETCBUF_BUFFER_SIZE 64 * 1024
+
+static int getcbuf(FILE* fp)
+{
+    static unsigned char buffer[GETCBUF_BUFFER_SIZE];
+    static size_t buffer_offset = 0;
+    static size_t buffer_size = 0;
+
+    if (buffer_offset < buffer_size)
+        return buffer[buffer_offset++];
+
+    buffer_size = fread(buffer, 1, GETCBUF_BUFFER_SIZE, fp);
+    buffer_offset = 0;
+
+    if (buffer_offset < buffer_size)
+        return buffer[buffer_offset++];
+    return EOF;
+}
+
 #define READ_LINE_BUFFER_SIZE 120
 #define READ_LINE_BUFFER_MARK 0x7F
 
@@ -51,44 +70,34 @@ size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
 {
     char* buffer_ = *buffer;
     size_t buffer_size_ = *buffer_size;
-
     if (buffer_ == NULL)
     {
         buffer_size_ = READ_LINE_BUFFER_SIZE;
         buffer_ = malloc(buffer_size_);
     }
-    buffer_[buffer_size_ - 1] = READ_LINE_BUFFER_MARK;
+    size_t read = 0;
 
-    size_t offset = 0;
-    while (true)
+    int c;
+    while ((c = getcbuf(fp)) != EOF)
     {
-        bool eof = fgets(buffer_ + offset, buffer_size_ - offset, fp) == NULL;
-        if (eof)
+        if (read >= buffer_size_)
         {
-            if (!feof(fp))
+            buffer_size_ *= 2;
+            buffer_ = realloc(buffer_, buffer_size_);
+            if (buffer_ == NULL)
                 exit(EXIT_FAILURE);
-            else
-                break;
         }
-
-        // Optimization which allows to skip full scan of the buffer in order to determine length of the line
-        if (buffer_[buffer_size_ - 1] == READ_LINE_BUFFER_MARK || buffer_[buffer_size_ - 2] == '\n')
+        buffer_[read++] = c;
+        if (c == '\n')
         {
-            offset += strlen(buffer_ + offset);
+            buffer_[read] = '\0';
             break;
         }
-
-        offset = buffer_size_ - 1;
-        buffer_size_ *= 2;
-        buffer_ = realloc(buffer_, buffer_size_);
-        if (buffer_ == NULL)
-            exit(EXIT_FAILURE);
-        buffer_[buffer_size_ - 1] = READ_LINE_BUFFER_MARK;
     }
 
     *buffer = buffer_;
     *buffer_size = buffer_size_;
-    return offset;
+    return read;
 }
 
 #define TRIE_DEFAULT_SIZE 64 * 1024
