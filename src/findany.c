@@ -126,6 +126,7 @@ struct
     struct trie_node* mem;
     size_t size;
     size_t offset;
+    bool rootchars[256];
 } trie;
 
 void trie_init()
@@ -135,6 +136,7 @@ void trie_init()
     struct trie_node root = TRIE_EMPTY_NODE;
     trie.mem[0] = root;
     trie.offset = 1;
+    memset(trie.rootchars, false, 256);
 }
 
 void trie_expand()
@@ -156,6 +158,7 @@ size_t trie_new_node()
 
 void trie_add(ssize_t idx, char* str, size_t length)
 {
+    trie.rootchars[*str] = true;
     while (true)
     {
         char c = *str;
@@ -259,6 +262,8 @@ bool trie_find_anywhere(char* str, size_t length)
         length--;
     for (size_t i = 0; i < length; i++)
     {
+        if (!trie.rootchars[*(str + i)])
+            continue;
         if (trie_find(0, str + i, length - i))
             return true;
     }
