@@ -1,14 +1,11 @@
 #include <getopt.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define PROGRAM_NAME "findany"
-
-int case_insensitive = 0;
-char* substrings_filename;
-char* input_filename = NULL;
 
 const struct option long_options[] = {
     {"case-insensitive", no_argument, NULL, 'i'},
@@ -37,7 +34,7 @@ void print_help()
 
 #define GETCBUF_BUFFER_SIZE 64 * 1024
 
-int getcbuf(FILE* fp)
+int getcbuf(int file)
 {
     static unsigned char buffer[GETCBUF_BUFFER_SIZE];
     static size_t buffer_offset = 0;
@@ -46,7 +43,7 @@ int getcbuf(FILE* fp)
     if (buffer_offset < buffer_size)
         return buffer[buffer_offset++];
 
-    buffer_size = fread(buffer, 1, GETCBUF_BUFFER_SIZE, fp);
+    buffer_size = read(file, buffer, GETCBUF_BUFFER_SIZE);
     buffer_offset = 0;
 
     if (buffer_offset < buffer_size)
@@ -55,7 +52,6 @@ int getcbuf(FILE* fp)
 }
 
 #define READ_LINE_BUFFER_SIZE 120
-#define READ_LINE_BUFFER_MARK 0x7F
 
 /**
  * Read the next line from the file
@@ -63,10 +59,10 @@ int getcbuf(FILE* fp)
  * If NULL, allocate memory automatically. Can expand if the next
  * line is longer than buffer_size-1.
  * @param &buffer_size Address of the variable containing size of the buffer
- * @param fp Input file handle
+ * @param file Input file handle
  * @return Length of the line including \\n, or 0 if EOF
  */
-size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
+size_t read_line(char** buffer, size_t* buffer_size, int file)
 {
     char* buffer_ = *buffer;
     size_t buffer_size_ = *buffer_size;
@@ -78,7 +74,7 @@ size_t read_line(char** buffer, size_t* buffer_size, FILE* fp)
     size_t read = 0;
 
     int c;
-    while ((c = getcbuf(fp)) != EOF)
+    while ((c = getcbuf(file)) != EOF)
     {
         if (read >= buffer_size_ - 1)
         {
@@ -125,71 +121,85 @@ struct trie_node
     bool is_leaf;
 };
 
-struct trie_node* trie;
-size_t trie_size;
-size_t trie_offset;
+struct
+{
+    struct trie_node* mem;
+    size_t size;
+    size_t offset;
+} trie;
 
 void trie_init()
 {
-    trie_size = TRIE_DEFAULT_SIZE;
-    trie = malloc(trie_size * TRIE_NODE_SIZE);
+    trie.size = TRIE_DEFAULT_SIZE;
+    trie.mem = malloc(trie.size * TRIE_NODE_SIZE);
     struct trie_node root = TRIE_EMPTY_NODE;
-    trie[0] = root;
-    trie_offset = 1;
+    trie.mem[0] = root;
+    trie.offset = 1;
 }
 
 void trie_expand()
 {
-    trie_size *= 2;
-    trie = realloc(trie, trie_size * TRIE_NODE_SIZE);
-    if (trie == NULL)
+    trie.size *= 2;
+    trie.mem = realloc(trie.mem, trie.size * TRIE_NODE_SIZE);
+    if (trie.mem == NULL)
         exit(EXIT_FAILURE);
 }
 
 size_t trie_new_node()
 {
-    if (trie_size <= trie_offset)
+    if (trie.size <= trie.offset)
         trie_expand();
     struct trie_node new_node = TRIE_EMPTY_NODE;
-    trie[trie_offset] = new_node;
-    return trie_offset++;
+    trie.mem[trie.offset] = new_node;
+    return trie.offset++;
 }
 
 void trie_add(ssize_t idx, char* str, size_t length)
 {
-    char c = *str;
-    ssize_t idx_prev;
-    do
+    while (true)
     {
-        if (trie[idx].c == '\0' || trie[idx].c == c)
+        char c = *str;
+        ssize_t idx_prev;
+
+        // Scan linked list inside the node
+        do
         {
-            trie[idx].c = c;
-            break;
+            if (trie.mem[idx].c == '\0' || trie.mem[idx].c == c)
+            {
+                trie.mem[idx].c = c;
+                break;
+            }
+            idx_prev = idx;
+            idx = trie.mem[idx].idx_next;
         }
-        idx_prev = idx;
-        idx = trie[idx].idx_next;
+        while (idx >= 0);
+        
+        if (idx < 0)
+        {
+            // The symbol is not found in the node. Add to the linked list.
+            idx = trie_new_node();
+            trie.mem[idx_prev].idx_next = idx;
+            trie.mem[idx].c = c;
+        }
+        if (length <= 1)
+        {
+            trie.mem[idx].is_leaf = true;
+            return;
+        }
+        if (trie.mem[idx].idx_child < 0)
+            trie.mem[idx].idx_child = trie_new_node();
+
+        // Then go to the child node
+        idx = trie.mem[idx].idx_child;
+        str++;
+        length--;
     }
-    while (idx >= 0);
-    if (idx < 0)
-    {
-        idx = trie_new_node();
-        trie[idx_prev].idx_next = idx;
-        trie[idx].c = c;
-    }
-    if (length <= 1)
-    {
-        trie[idx].is_leaf = true;
-        return;
-    }
-    if (trie[idx].idx_child < 0)
-        trie[idx].idx_child = trie_new_node();
-    trie_add(trie[idx].idx_child, str + 1, length - 1);
 }
 
-void trie_build()
+void trie_build(char* substrings_filename)
 {
-    FILE* fp = fopen(substrings_filename, "r");
-    if (fp == NULL)
+    int file = open(substrings_filename, O_RDONLY | O_BINARY);
+    if (file < 0)
     {
         printf("No access to file %s", substrings_filename);
         exit(EXIT_FAILURE);
@@ -200,7 +210,7 @@ void trie_build()
     char* buffer = NULL;
     size_t buffer_size;
     size_t read;
-    while ((read = read_line(&buffer, &buffer_size, fp)) > 0)
+    while ((read = read_line(&buffer, &buffer_size, file)) > 0)
     {
         if (buffer[read - 1] == '\n')
             buffer[--read] = '\0';
@@ -209,30 +219,39 @@ void trie_build()
         trie_add(0, buffer, read);
     }
 
-    fclose(fp);
+    close(file);
     free(buffer);
 }
 
 bool trie_find(ssize_t idx, char* str, size_t length)
 {
-    char c = *str;
-    do
+    while (true)
     {
-        if (trie[idx].c == c)
-            break;
-        idx = trie[idx].idx_next;
+        char c = *str;
+
+        // Scan linked list inside the node
+        do
+        {
+            if (trie.mem[idx].c == c)
+                break;
+            idx = trie.mem[idx].idx_next;
+        }
+        while (idx >= 0);
+        if (idx < 0)
+            return false;
+        if (trie.mem[idx].is_leaf)
+            return true;
+        if (length <= 1)
+            return false;
+
+        // Then go to the child node
+        idx = trie.mem[idx].idx_child;
+        str++;
+        length--;
     }
-    while (idx >= 0);
-    if (idx < 0)
-        return false;
-    if (trie[idx].is_leaf)
-        return true;
-    if (length <= 1)
-        return false;
-    return trie_find(trie[idx].idx_child, str + 1, length - 1);
 }
 
-bool filter_input(char* str, size_t length)
+bool trie_find_anywhere(char* str, size_t length)
 {
     if (str[length - 1] == '\n')
         length--;
@@ -246,37 +265,45 @@ bool filter_input(char* str, size_t length)
     return false;
 }
 
-void scan_input()
+void findany(char* substrings_filename, char* input_filename, bool case_insensitive)
 {
-    FILE* fp = stdin;
+    trie_build(substrings_filename);
+
+    int src = STDIN_FILENO;
     bool need_close = false;
     if (input_filename != NULL)
     {
-        fp = fopen(input_filename, "r");
-        if (fp == NULL)
+        src = open(input_filename, O_RDONLY | O_BINARY);
+        if (src < 0)
         {
             printf("No access to file %s", input_filename);
             exit(EXIT_FAILURE);
         }
         need_close = true;
     }
+    int dst = STDOUT_FILENO;
+    setmode(STDOUT_FILENO, O_BINARY);
 
     char* buffer = NULL;
     size_t buffer_size;
     size_t read;
-    while ((read = read_line(&buffer, &buffer_size, fp)) > 0)
+    while ((read = read_line(&buffer, &buffer_size, src)) > 0)
     {
-        if (filter_input(buffer, read))
-            fwrite(buffer, 1, read, stdout);
+        if (trie_find_anywhere(buffer, read))
+            write(dst, buffer, read);
     }
 
     if (need_close)
-        fclose(fp);
+        close(src);
     free(buffer);
 }
 
 int main(int argc, char **argv)
 {
+    char* substrings_filename;
+    char* input_filename = NULL;
+    bool case_insensitive = false;
+
     if (argc <= 1)
     {
         print_usage();
@@ -296,7 +323,7 @@ int main(int argc, char **argv)
                 exit(EXIT_SUCCESS);
 
             case 'i':
-                case_insensitive = 1;
+                case_insensitive = true;
                 break;
 
             default:
@@ -320,7 +347,6 @@ int main(int argc, char **argv)
         }
     }
 
-    trie_build();
-    scan_input();
+    findany(substrings_filename, input_filename, case_insensitive);
     exit(EXIT_SUCCESS);
 }
