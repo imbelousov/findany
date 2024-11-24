@@ -34,8 +34,8 @@ void print_help()
     printf("  -h, --help                print this help\n");
 }
 
-#ifdef __SSE4_2__
-void* memchr_sse42(void* buf, char val, size_t max_count)
+#ifdef __SSE4_1__
+void* memchr_sse(void* buf, char val, size_t max_count)
 {
     size_t i = 0;
     __m128i vector_val = _mm_set1_epi8(val);
@@ -62,10 +62,10 @@ void* memchr_sse42(void* buf, char val, size_t max_count)
     }
     return NULL;
 }
-#define _memchr(...) memchr_sse42(__VA_ARGS__)
-#else /* __SSE4_2__ */
+#define _memchr(...) memchr_sse(__VA_ARGS__)
+#else /* __SSE4_1__ */
 #define _memchr(...) memchr(__VA_ARGS__)
-#endif /* __SSE4_2__ */
+#endif /* __SSE4_1__ */
 
 #define READ_LINE_BUFFER_SIZE 120
 #define READ_LINE_CHUNK_BUFFER_SIZE 64 * 1024
