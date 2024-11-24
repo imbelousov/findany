@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,9 +95,24 @@ size_t read_line(char** buffer, size_t* buffer_size, int file)
     return read;
 }
 
+#define BITMAP_WORD_BITS (sizeof(size_t) * 8)
+
+void bitmap_set(size_t* bitmap, size_t idx)
+{
+    size_t idx_word = idx / BITMAP_WORD_BITS;
+    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
+    bitmap[idx_word] |= mask;
+}
+
+bool bitmap_get(size_t* bitmap, size_t idx)
+{
+    size_t idx_word = idx / BITMAP_WORD_BITS;
+    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
+    return bitmap[idx_word] & mask;
+}
+
 #define TRIE_DEFAULT_SIZE 64 * 1024
 #define TRIE_NODE_SIZE sizeof(struct trie_node)
-#define TRIE_EMPTY_NODE {-1, -1, '\0', false}
 
 struct trie_node
 {
@@ -111,14 +127,16 @@ struct trie_node
     ssize_t idx_child;
 
     /**
+     * Bit 0 determines whether trie contains the word formed by this and parent nodes or not.
+     * Bits 1-255 are set only in the first node in linked list and allow to check if the linked
+     * list contains the character or not without full scan.
+     */
+    size_t bitmap[256 / BITMAP_WORD_BITS];
+
+    /**
      * Stored character or \\0, if node is empty
      */
     char c;
-
-    /**
-     * Determines whether trie contains the word formed by this and parent nodes or not
-     */
-    bool is_leaf;
 };
 
 struct
@@ -126,18 +144,7 @@ struct
     struct trie_node* mem;
     size_t size;
     size_t offset;
-    bool rootchars[256];
 } trie;
-
-void trie_init()
-{
-    trie.size = TRIE_DEFAULT_SIZE;
-    trie.mem = malloc(trie.size * TRIE_NODE_SIZE);
-    struct trie_node root = TRIE_EMPTY_NODE;
-    trie.mem[0] = root;
-    trie.offset = 1;
-    memset(trie.rootchars, false, 256);
-}
 
 void trie_expand()
 {
@@ -151,18 +158,31 @@ size_t trie_new_node()
 {
     if (trie.size <= trie.offset)
         trie_expand();
-    struct trie_node new_node = TRIE_EMPTY_NODE;
+    struct trie_node new_node;
+    new_node.idx_next = -1;
+    new_node.idx_child = -1;
+    memset(new_node.bitmap, 0, 32);
+    new_node.c = '\0';
     trie.mem[trie.offset] = new_node;
     return trie.offset++;
 }
 
+void trie_init()
+{
+    trie.size = TRIE_DEFAULT_SIZE;
+    trie.mem = malloc(trie.size * TRIE_NODE_SIZE);
+    // Root node
+    trie_new_node();
+}
+
 void trie_add(ssize_t idx, char* str, size_t length)
 {
-    trie.rootchars[*str] = true;
     while (true)
     {
         char c = *str;
         ssize_t idx_prev;
+
+        bitmap_set(trie.mem[idx].bitmap, (unsigned char)c);
 
         // Scan linked list inside the node
         do
@@ -186,7 +206,7 @@ void trie_add(ssize_t idx, char* str, size_t length)
         }
         if (length <= 1)
         {
-            trie.mem[idx].is_leaf = true;
+            bitmap_set(trie.mem[idx].bitmap, 0);
             return;
         }
         if (trie.mem[idx].idx_child < 0)
@@ -232,6 +252,9 @@ bool trie_find(ssize_t idx, char* str, size_t length)
     {
         char c = *str;
 
+        if (!bitmap_get(trie.mem[idx].bitmap, (unsigned char)c))
+            return false;
+
         // Scan linked list inside the node
         do
         {
@@ -242,7 +265,7 @@ bool trie_find(ssize_t idx, char* str, size_t length)
         while (idx >= 0);
         if (idx < 0)
             return false;
-        if (trie.mem[idx].is_leaf)
+        if (bitmap_get(trie.mem[idx].bitmap, 0))
             return true;
         if (length <= 1)
             return false;
@@ -262,8 +285,6 @@ bool trie_find_anywhere(char* str, size_t length)
         length--;
     for (size_t i = 0; i < length; i++)
     {
-        if (!trie.rootchars[*(str + i)])
-            continue;
         if (trie_find(0, str + i, length - i))
             return true;
     }
