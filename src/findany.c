@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <smmintrin.h>
 
 #define PROGRAM_NAME "findany"
 
@@ -33,6 +34,39 @@ void print_help()
     printf("  -h, --help                print this help\n");
 }
 
+#ifdef __SSE4_2__
+void* memchr_sse42(void* buf, char val, size_t max_count)
+{
+    size_t i = 0;
+    __m128i vector_val = _mm_set1_epi8(val);
+    if (max_count >= 16)
+    {
+        for (; i <= max_count - 16; i += 16)
+        {
+            __m128i vector_buf = _mm_loadu_si128(buf + i);
+            __m128i vector_result = _mm_cmpeq_epi8(vector_buf, vector_val);
+            if (_mm_testz_si128(vector_result, vector_result) == 0)
+            {
+                for (size_t j = 0; j < 16; j++)
+                {
+                    if (((char*)&vector_result)[j] != 0)
+                        return buf + i + j;
+                }
+            }
+        }
+    }
+    for (; i < max_count; i++)
+    {
+        if (((char*)buf)[i] == val)
+            return buf + i;
+    }
+    return NULL;
+}
+#define _memchr(...) memchr_sse42(__VA_ARGS__)
+#else /* __SSE4_2__ */
+#define _memchr(...) memchr(__VA_ARGS__)
+#endif /* __SSE4_2__ */
+
 #define READ_LINE_BUFFER_SIZE 120
 #define READ_LINE_CHUNK_BUFFER_SIZE 64 * 1024
 
@@ -53,7 +87,7 @@ void read_line_chunk(int file, char** chunk, size_t* chunk_size)
     }
 
     *chunk = buffer + offset;
-    char* lf = memchr(*chunk, '\n', size - offset);
+    char* lf = _memchr(*chunk, '\n', size - offset);
     *chunk_size = lf != NULL ? lf - *chunk + 1 : size - offset;
     offset += *chunk_size;
 }
