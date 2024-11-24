@@ -33,66 +33,71 @@ void print_help()
     printf("  -h, --help                print this help\n");
 }
 
-#define GETCBUF_BUFFER_SIZE 64 * 1024
-
-int getcbuf(int file)
-{
-    static unsigned char buffer[GETCBUF_BUFFER_SIZE];
-    static size_t buffer_offset = 0;
-    static size_t buffer_size = 0;
-
-    if (buffer_offset < buffer_size)
-        return buffer[buffer_offset++];
-
-    buffer_size = read(file, buffer, GETCBUF_BUFFER_SIZE);
-    buffer_offset = 0;
-
-    if (buffer_offset < buffer_size)
-        return buffer[buffer_offset++];
-    return EOF;
-}
-
 #define READ_LINE_BUFFER_SIZE 120
+#define READ_LINE_CHUNK_BUFFER_SIZE 64 * 1024
+
+void read_line_chunk(int file, char** chunk, size_t* chunk_size)
+{
+    static char buffer[READ_LINE_CHUNK_BUFFER_SIZE];
+    static size_t offset = 0;
+    static size_t size = 0;
+
+    if (offset >= size)
+    {
+        offset = 0;
+        *chunk_size = 0;
+        *chunk = NULL;
+        size = read(file, buffer, READ_LINE_CHUNK_BUFFER_SIZE);
+        if (size == 0)
+            return;
+    }
+
+    *chunk = buffer + offset;
+    char* lf = memchr(*chunk, '\n', size - offset);
+    *chunk_size = lf != NULL ? lf - *chunk + 1 : size - offset;
+    offset += *chunk_size;
+}
 
 /**
  * Read the next line from the file
+ * @param file Input file handle
  * @param &buffer Address of the first character of the buffer or NULL.
  * If NULL, allocate memory automatically. Can expand if the next
  * line is longer than buffer_size-1.
  * @param &buffer_size Address of the variable containing size of the buffer
- * @param file Input file handle
  * @return Length of the line including \\n, or 0 if EOF
  */
-size_t read_line(char** buffer, size_t* buffer_size, int file)
+size_t read_line(int file, char** buffer, size_t* buffer_size)
 {
-    char* buffer_ = *buffer;
-    size_t buffer_size_ = *buffer_size;
-    if (buffer_ == NULL)
+    if (*buffer == NULL)
     {
-        buffer_size_ = READ_LINE_BUFFER_SIZE;
-        buffer_ = malloc(buffer_size_);
+        *buffer_size = READ_LINE_BUFFER_SIZE;
+        *buffer = malloc(*buffer_size);
     }
-    size_t read = 0;
-
-    int c;
-    while ((c = getcbuf(file)) != EOF)
+    
+    size_t offset = 0;
+    while (true)
     {
-        if (read >= buffer_size_ - 1)
+        char* chunk;
+        size_t chunk_size;
+        read_line_chunk(file, &chunk, &chunk_size);
+        if (chunk_size == 0)
+            break;
+
+        if (offset + chunk_size > *buffer_size)
         {
-            buffer_size_ *= 2;
-            buffer_ = realloc(buffer_, buffer_size_);
-            if (buffer_ == NULL)
+            *buffer_size = (offset + chunk_size) * 2;
+            *buffer = realloc(*buffer, *buffer_size);
+            if (*buffer == NULL)
                 exit(EXIT_FAILURE);
         }
-        buffer_[read++] = c;
-        if (c == '\n')
+
+        memcpy(*buffer + offset, chunk, chunk_size);
+        offset += chunk_size;
+        if ((*buffer)[offset - 1] == '\n')
             break;
     }
-    buffer_[read] = '\0';
-
-    *buffer = buffer_;
-    *buffer_size = buffer_size_;
-    return read;
+    return offset;
 }
 
 #define BITMAP_WORD_BITS (sizeof(size_t) * 8)
@@ -233,7 +238,7 @@ void trie_build(char* substrings_filename)
     char* buffer = NULL;
     size_t buffer_size;
     size_t read;
-    while ((read = read_line(&buffer, &buffer_size, file)) > 0)
+    while ((read = read_line(file, &buffer, &buffer_size)) > 0)
     {
         if (buffer[read - 1] == '\n')
             buffer[--read] = '\0';
@@ -313,7 +318,7 @@ void findany(char* substrings_filename, char* input_filename, bool case_insensit
     char* buffer = NULL;
     size_t buffer_size;
     size_t read;
-    while ((read = read_line(&buffer, &buffer_size, src)) > 0)
+    while ((read = read_line(src, &buffer, &buffer_size)) > 0)
     {
         if (trie_find_anywhere(buffer, read))
             write(dst, buffer, read);
