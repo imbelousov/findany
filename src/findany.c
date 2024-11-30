@@ -99,17 +99,17 @@ void string_expand(struct string* str, size_t min_length)
     str->length = min_length;
 }
 
-struct string string_sub(const struct string* str, size_t offset, size_t length)
+struct string string_sub(const struct string str, size_t offset, size_t length)
 {
     struct string substring;
-    substring.data = str->data + offset;
+    substring.data = str.data + offset;
     substring.length = length;
     return substring;
 }
 
 unsigned char* string_to_lower_lookup = NULL;
 
-void string_to_lower(const struct string* src, struct string* dst)
+void string_to_lower(const struct string src, struct string* dst)
 {
     if (string_to_lower_lookup == NULL)
     {
@@ -120,9 +120,15 @@ void string_to_lower(const struct string* src, struct string* dst)
             string_to_lower_lookup[c] = tolower(c);
     }
 
-    string_expand(dst, src->length);
-    for (size_t i = 0; i < src->length; i++)
-        dst->data[i] = string_to_lower_lookup[src->data[i]];
+    string_expand(dst, src.length);
+    for (size_t i = 0; i < src.length; i++)
+        dst->data[i] = string_to_lower_lookup[src.data[i]];
+}
+
+void string_trim_end(struct string* str, const unsigned char c)
+{
+    while (str->length > 0 && str->data[str->length - 1] == c)
+        str->length--;
 }
 
 void string_destroy(struct string* str)
@@ -182,7 +188,7 @@ struct string fstream_read_line(struct fstream* stream, struct string* buffer, u
         if (stream->buffer_offset >= stream->buffer_size)
             fstream_read_to_buffer(stream);
     }
-    return string_sub(buffer, 0, offset);
+    return string_sub(*buffer, 0, offset);
 }
 
 void fstream_destroy(struct fstream* stream)
@@ -334,7 +340,7 @@ void trie_build(unsigned char* substrings_filename, bool case_insensitive)
         if (line.length == 0)
             break;
         if (case_insensitive)
-            string_to_lower(&line, &line);
+            string_to_lower(line, &line);
 
         unsigned char* str = line.data;
         size_t length = line.length;
@@ -351,11 +357,11 @@ void trie_build(unsigned char* substrings_filename, bool case_insensitive)
     fstream_destroy(&stream);
 }
 
-bool trie_find(ssize_t idx, unsigned char* str, size_t length)
+bool trie_find(ssize_t idx, struct string str)
 {
     while (true)
     {
-        unsigned char c = *str;
+        unsigned char c = *(str.data);
 
         if (!bitmap_get(trie.mem[idx].bitmap, c))
             return false;
@@ -372,25 +378,23 @@ bool trie_find(ssize_t idx, unsigned char* str, size_t length)
             return false;
         if (bitmap_get(trie.mem[idx].bitmap, 0))
             return true;
-        if (length <= 1)
+        if (str.length <= 1)
             return false;
 
         // Then go to the child node
         idx = trie.mem[idx].idx_child;
-        str++;
-        length--;
+
+        str = string_sub(str, 1, str.length - 1);
     }
 }
 
-bool trie_find_anywhere(unsigned char* str, size_t length)
+bool trie_find_anywhere(struct string str)
 {
-    if (str[length - 1] == '\n')
-        length--;
-    if (str > 0 && str[length - 1] == '\r')
-        length--;
-    for (size_t i = 0; i < length; i++)
+    string_trim_end(&str, '\n');
+    string_trim_end(&str, '\r');
+    for (size_t i = 0; i < str.length; i++)
     {
-        if (trie_find(0, str + i, length - i))
+        if (trie_find(0, string_sub(str, i, str.length - i)))
             return true;
     }
     return false;
@@ -426,8 +430,8 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             struct string line = fstream_read_line(&srcstream, &buffer, '\n');
             if (line.length == 0)
                 break;
-            string_to_lower(&line, &lower_buffer);
-            if (trie_find_anywhere(lower_buffer.data, line.length))
+            string_to_lower(line, &lower_buffer);
+            if (trie_find_anywhere(string_sub(lower_buffer, 0, line.length)))
                 write(dst, line.data, line.length);
         }
         string_destroy(&lower_buffer);
@@ -439,7 +443,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             struct string line = fstream_read_line(&srcstream, &buffer, '\n');
             if (line.length == 0)
                 break;
-            if (trie_find_anywhere(line.data, line.length))
+            if (trie_find_anywhere(line))
                 write(dst, line.data, line.length);
         }
     }
