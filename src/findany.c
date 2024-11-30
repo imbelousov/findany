@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <fcntl.h>
+#include <locale.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -456,6 +457,8 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
 
 int main(int argc, char **argv)
 {
+    setlocale(LC_ALL, "");
+
     unsigned char* substrings_filename;
     unsigned char* input_filename = NULL;
     bool case_insensitive = false;
