@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <getopt.h>
 #include <fcntl.h>
 #include <stdbool.h>
@@ -35,7 +36,7 @@ void print_help()
 }
 
 #ifdef __SSE4_1__
-void* memchr_sse(void* buf, char val, size_t max_count)
+void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 {
     size_t i = 0;
     __m128i vector_val = _mm_set1_epi8(val);
@@ -49,7 +50,7 @@ void* memchr_sse(void* buf, char val, size_t max_count)
             {
                 for (size_t j = 0; j < 16; j++)
                 {
-                    if (((char*)&vector_result)[j] != 0)
+                    if (((unsigned char*)&vector_result)[j] != 0)
                         return buf + i + j;
                 }
             }
@@ -57,81 +58,137 @@ void* memchr_sse(void* buf, char val, size_t max_count)
     }
     for (; i < max_count; i++)
     {
-        if (((char*)buf)[i] == val)
+        if (((unsigned char*)buf)[i] == val)
             return buf + i;
     }
     return NULL;
 }
-#define _memchr(...) memchr_sse(__VA_ARGS__)
+#define _memchr(buf, val, max_count) memchr_sse(buf, val, max_count)
 #else /* __SSE4_1__ */
-#define _memchr(...) memchr(__VA_ARGS__)
+#define _memchr(buf, val, max_count) memchr(buf, val, max_count)
 #endif /* __SSE4_1__ */
 
-#define READ_LINE_BUFFER_SIZE 120
-#define READ_LINE_CHUNK_BUFFER_SIZE 64 * 1024
-
-void read_line_chunk(int file, char** chunk, size_t* chunk_size)
+struct string
 {
-    static char buffer[READ_LINE_CHUNK_BUFFER_SIZE];
-    static size_t offset = 0;
-    static size_t size = 0;
+    unsigned char* data;
+    size_t length;
+};
 
-    if (offset >= size)
-    {
-        offset = 0;
-        *chunk_size = 0;
-        *chunk = NULL;
-        size = read(file, buffer, READ_LINE_CHUNK_BUFFER_SIZE);
-        if (size == 0)
-            return;
-    }
-
-    *chunk = buffer + offset;
-    char* lf = _memchr(*chunk, '\n', size - offset);
-    *chunk_size = lf != NULL ? lf - *chunk + 1 : size - offset;
-    offset += *chunk_size;
+struct string string_init()
+{
+    struct string str;
+    memset(&str, 0, sizeof(struct string));
+    return str;
 }
 
-/**
- * Read the next line from the file
- * @param file Input file handle
- * @param &buffer Address of the first character of the buffer or NULL.
- * If NULL, allocate memory automatically. Can expand if the next
- * line is longer than buffer_size-1.
- * @param &buffer_size Address of the variable containing size of the buffer
- * @return Length of the line including \\n, or 0 if EOF
- */
-size_t read_line(int file, char** buffer, size_t* buffer_size)
+void string_expand(struct string* str, size_t min_length)
 {
-    if (*buffer == NULL)
+    if (str->data == NULL)
     {
-        *buffer_size = READ_LINE_BUFFER_SIZE;
-        *buffer = malloc(*buffer_size);
+        str->data = malloc(min_length);
+        if (str->data == NULL)
+            exit(EXIT_FAILURE);
+        str->length = min_length;
+        return;
     }
-    
+    if (str->length >= min_length)
+        return;
+    str->data = realloc(str->data, min_length);
+    if (str->data == NULL)
+        exit(EXIT_FAILURE);
+    str->length = min_length;
+}
+
+struct string string_sub(const struct string* str, size_t offset, size_t length)
+{
+    struct string substring;
+    substring.data = str->data + offset;
+    substring.length = length;
+    return substring;
+}
+
+unsigned char* string_to_lower_lookup = NULL;
+
+void string_to_lower(const struct string* src, struct string* dst)
+{
+    if (string_to_lower_lookup == NULL)
+    {
+        string_to_lower_lookup = malloc(256);
+        if (string_to_lower_lookup == NULL)
+            exit(EXIT_FAILURE);
+        for (int c = 0; c <= 255; c++)
+            string_to_lower_lookup[c] = tolower(c);
+    }
+
+    string_expand(dst, src->length);
+    for (size_t i = 0; i < src->length; i++)
+        dst->data[i] = string_to_lower_lookup[src->data[i]];
+}
+
+void string_destroy(struct string* str)
+{
+    if (str->data != NULL)
+        free(str->data);
+    str->data = NULL;
+}
+
+#define FSTREAM_BUFFER_DEFAULT_CAPACITY 4 * 1024 * 1024
+
+struct fstream
+{
+    void* buffer;
+    size_t buffer_capacity;
+    size_t buffer_size;
+    size_t buffer_offset;
+    int file;
+};
+
+struct fstream fstream_init(int file)
+{
+    struct fstream stream;
+    stream.buffer_capacity = FSTREAM_BUFFER_DEFAULT_CAPACITY;
+    stream.buffer = malloc(stream.buffer_capacity);
+    if (stream.buffer == NULL)
+        exit(EXIT_FAILURE);
+    stream.buffer_size = 0;
+    stream.buffer_offset = 0;
+    stream.file = file;
+    return stream;
+}
+
+void fstream_read_to_buffer(struct fstream* stream)
+{
+    stream->buffer_size = read(stream->file, stream->buffer, stream->buffer_capacity);
+    stream->buffer_offset = 0;
+}
+
+struct string fstream_read_line(struct fstream* stream, struct string* buffer, unsigned char delim)
+{
     size_t offset = 0;
-    while (true)
+    if (stream->buffer_offset >= stream->buffer_size)
+        fstream_read_to_buffer(stream);
+    while (stream->buffer_size > 0)
     {
-        char* chunk;
-        size_t chunk_size;
-        read_line_chunk(file, &chunk, &chunk_size);
-        if (chunk_size == 0)
+        void* delimptr = _memchr(stream->buffer + stream->buffer_offset, delim, stream->buffer_size - stream->buffer_offset);
+        size_t length = delimptr != NULL
+            ? delimptr - stream->buffer - stream->buffer_offset + 1
+            : stream->buffer_size - stream->buffer_offset;
+        string_expand(buffer, offset + length * 2);
+        memcpy(buffer->data + offset, stream->buffer + stream->buffer_offset, length);
+        stream->buffer_offset += length;
+        offset += length;
+        if (delimptr != NULL)
             break;
-
-        if (offset + chunk_size > *buffer_size)
-        {
-            *buffer_size = (offset + chunk_size) * 2;
-            *buffer = realloc(*buffer, *buffer_size);
-            if (*buffer == NULL)
-                exit(EXIT_FAILURE);
-        }
-
-        memcpy(*buffer + offset, chunk, chunk_size);
-        offset += chunk_size;
-        if ((*buffer)[offset - 1] == '\n')
-            break;
+        if (stream->buffer_offset >= stream->buffer_size)
+            fstream_read_to_buffer(stream);
     }
-    return offset;
+    return string_sub(buffer, 0, offset);
+}
+
+void fstream_destroy(struct fstream* stream)
+{
+    free(stream->buffer);
+    stream->buffer = NULL;
 }
 
 #define BITMAP_WORD_BITS (sizeof(size_t) * 8)
@@ -175,7 +232,7 @@ struct trie_node
     /**
      * Stored character or \\0, if node is empty
      */
-    char c;
+    unsigned char c;
 };
 
 struct
@@ -214,14 +271,14 @@ void trie_init()
     trie_new_node();
 }
 
-void trie_add(ssize_t idx, char* str, size_t length)
+void trie_add(ssize_t idx, unsigned char* str, size_t length)
 {
     while (true)
     {
-        char c = *str;
+        unsigned char c = *str;
         ssize_t idx_prev;
 
-        bitmap_set(trie.mem[idx].bitmap, (unsigned char)c);
+        bitmap_set(trie.mem[idx].bitmap, c);
 
         // Scan linked list inside the node
         do
@@ -258,7 +315,7 @@ void trie_add(ssize_t idx, char* str, size_t length)
     }
 }
 
-void trie_build(char* substrings_filename)
+void trie_build(unsigned char* substrings_filename, bool case_insensitive)
 {
     int file = open(substrings_filename, O_RDONLY | O_BINARY);
     if (file < 0)
@@ -269,29 +326,38 @@ void trie_build(char* substrings_filename)
 
     trie_init();
 
-    char* buffer = NULL;
-    size_t buffer_size;
-    size_t read;
-    while ((read = read_line(file, &buffer, &buffer_size)) > 0)
+    struct fstream stream = fstream_init(file);
+    struct string buffer = string_init();
+    while (true)
     {
-        if (buffer[read - 1] == '\n')
-            buffer[--read] = '\0';
-        if (read > 0 && buffer[read - 1] == '\r')
-            buffer[--read] = '\0';
-        trie_add(0, buffer, read);
+        struct string line = fstream_read_line(&stream, &buffer, '\n');
+        if (line.length == 0)
+            break;
+        if (case_insensitive)
+            string_to_lower(&line, &line);
+
+        unsigned char* str = line.data;
+        size_t length = line.length;
+        if (str[length - 1] == '\n')
+            str[--length] = '\0';
+        if (length > 0 && str[length - 1] == '\r')
+            str[--length] = '\0';
+
+        trie_add(0, str, length);
     }
 
     close(file);
-    free(buffer);
+    string_destroy(&buffer);
+    fstream_destroy(&stream);
 }
 
-bool trie_find(ssize_t idx, char* str, size_t length)
+bool trie_find(ssize_t idx, unsigned char* str, size_t length)
 {
     while (true)
     {
-        char c = *str;
+        unsigned char c = *str;
 
-        if (!bitmap_get(trie.mem[idx].bitmap, (unsigned char)c))
+        if (!bitmap_get(trie.mem[idx].bitmap, c))
             return false;
 
         // Scan linked list inside the node
@@ -316,7 +382,7 @@ bool trie_find(ssize_t idx, char* str, size_t length)
     }
 }
 
-bool trie_find_anywhere(char* str, size_t length)
+bool trie_find_anywhere(unsigned char* str, size_t length)
 {
     if (str[length - 1] == '\n')
         length--;
@@ -330,9 +396,9 @@ bool trie_find_anywhere(char* str, size_t length)
     return false;
 }
 
-void findany(char* substrings_filename, char* input_filename, bool case_insensitive)
+void findany(unsigned char* substrings_filename, unsigned char* input_filename, bool case_insensitive)
 {
-    trie_build(substrings_filename);
+    trie_build(substrings_filename, case_insensitive);
 
     int src = STDIN_FILENO;
     bool need_close = false;
@@ -349,24 +415,45 @@ void findany(char* substrings_filename, char* input_filename, bool case_insensit
     int dst = STDOUT_FILENO;
     setmode(STDOUT_FILENO, O_BINARY);
 
-    char* buffer = NULL;
-    size_t buffer_size;
-    size_t read;
-    while ((read = read_line(src, &buffer, &buffer_size)) > 0)
+    struct fstream srcstream = fstream_init(src);
+    struct string buffer = string_init();
+
+    if (case_insensitive)
     {
-        if (trie_find_anywhere(buffer, read))
-            write(dst, buffer, read);
+        struct string lower_buffer = string_init();
+        while (true)
+        {
+            struct string line = fstream_read_line(&srcstream, &buffer, '\n');
+            if (line.length == 0)
+                break;
+            string_to_lower(&line, &lower_buffer);
+            if (trie_find_anywhere(lower_buffer.data, line.length))
+                write(dst, line.data, line.length);
+        }
+        string_destroy(&lower_buffer);
+    }
+    else
+    {
+        while (true)
+        {
+            struct string line = fstream_read_line(&srcstream, &buffer, '\n');
+            if (line.length == 0)
+                break;
+            if (trie_find_anywhere(line.data, line.length))
+                write(dst, line.data, line.length);
+        }
     }
 
+    string_destroy(&buffer);
+    fstream_destroy(&srcstream);
     if (need_close)
         close(src);
-    free(buffer);
 }
 
 int main(int argc, char **argv)
 {
-    char* substrings_filename;
-    char* input_filename = NULL;
+    unsigned char* substrings_filename;
+    unsigned char* input_filename = NULL;
     bool case_insensitive = false;
 
     if (argc <= 1)
