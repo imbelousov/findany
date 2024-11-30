@@ -110,7 +110,7 @@ struct string string_sub(const struct string str, size_t offset, size_t length)
 
 void string_to_lower(const struct string src, struct string* dst)
 {
-    static char* lookup = NULL;
+    static unsigned char* lookup = NULL;
 
     if (lookup == NULL)
     {
