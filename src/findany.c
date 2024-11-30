@@ -108,22 +108,23 @@ struct string string_sub(const struct string str, size_t offset, size_t length)
     return substring;
 }
 
-unsigned char* string_to_lower_lookup = NULL;
-
 void string_to_lower(const struct string src, struct string* dst)
 {
-    if (string_to_lower_lookup == NULL)
+    static char* lookup = NULL;
+
+    if (lookup == NULL)
     {
-        string_to_lower_lookup = malloc(256);
-        if (string_to_lower_lookup == NULL)
+        // Build a mapping "char -> lowercase char"
+        lookup = malloc(256);
+        if (lookup == NULL)
             exit(EXIT_FAILURE);
         for (int c = 0; c <= 255; c++)
-            string_to_lower_lookup[c] = tolower(c);
+            lookup[c] = tolower(c);
     }
 
     string_expand(dst, src.length);
     for (size_t i = 0; i < src.length; i++)
-        dst->data[i] = string_to_lower_lookup[src.data[i]];
+        dst->data[i] = lookup[src.data[i]];
 }
 
 void string_trim_end(struct string* str, const unsigned char c)
