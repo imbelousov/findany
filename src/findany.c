@@ -71,9 +71,12 @@ void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 #define _memchr(buf, val, max_count) memchr(buf, val, max_count)
 #endif /* __SSE4_1__ */
 
-#define fatal(...) \
+#define fatal(...) do\
+{\
     printf(__VA_ARGS__);\
-    exit(EXIT_FAILURE)
+    exit(EXIT_FAILURE);\
+}\
+while (false)
 #define fatal_nomem() fatal("Not enough memory")
 
 struct string
