@@ -35,9 +35,9 @@ void print_help()
     printf("Read standard input if FILE is missing\n");
     printf("\n");
     printf("Options:\n");
-    printf("  -i, --case-insensitive    accept the match regardless of upper or lower case\n");
-    printf("  -o, --output OUTPUT       redirect output to file OUTPUT\n");
-    printf("  -h, --help                print this help\n");
+    printf("  -i, --case-insensitive    Perform a case-insensitive search. By default, searches are case-sensitive.\n");
+    printf("  -o, --output OUTPUT       Redirect the output to OUTPUT instead of printing to standard output. It enables a progress-bar.\n");
+    printf("  -h, --help                Display the help message and exit.\n");
 }
 
 #ifdef __SSE4_1__
