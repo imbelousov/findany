@@ -15,8 +15,8 @@
  */
 
 #include <ctype.h>
-#include <getopt.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <locale.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -26,6 +26,14 @@
 #include <smmintrin.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
+
+#ifdef _WIN32
+#define stat _stat64
+#define fstat fstat64
+#else /* _WIN32 */
+#define O_BINARY 0
+#endif /* _WIN32 */
 
 #define PROGRAM_NAME "findany"
 
@@ -432,7 +440,7 @@ bool trie_find_anywhere(struct string str)
 void format_size(size_t size, char* buffer)
 {
     if ((size >> 11) == 0)
-        sprintf(buffer, "%d", size);
+        sprintf(buffer, "%zu", size);
     else if ((size >> 21) == 0)
     {
         float k = (float) size / 1024.0f;
@@ -452,7 +460,7 @@ void format_size(size_t size, char* buffer)
 
 char* build_progress_str(size_t processed, size_t size)
 {
-    static char buffer[256];
+    static char buffer[1024];
 
     char processed_str[256];
     char size_str[256];
@@ -490,25 +498,24 @@ void print_ws(size_t length)
 void print_progress(size_t processed, size_t size, bool force)
 {
     static clock_t prevtime = 0;
-    static size_t prevprocessed = 0;
     static size_t prevlength = 0;
     clock_t time = clock();
     if (prevtime == 0)
     {
         prevtime = time;
-        prevprocessed = processed;
         return;
     }
-    if (time - prevtime > 1000 || force)
+    if (time - prevtime > CLOCKS_PER_SEC)
     {
         char* progress_str = build_progress_str(processed, size);
         size_t length = strlen(progress_str);
         printf("\r%s", progress_str);
+        fflush(stdout);
         if (prevlength > length)
             print_ws(prevlength - length);
         prevtime = time;
-        prevprocessed = processed;
         prevlength = length;
+        prevtime = time;
     }
 }
 
@@ -526,25 +533,29 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
         if (input_file < 0)
             fatal("No access to file %s", input_filename);
         input_need_close = true;
-        struct _stat64 stat;
-        if (fstat64(input_file, &stat) >= 0)
+        struct stat stat;
+        if (fstat(input_file, &stat) >= 0)
             input_size = stat.st_size;
     }
+#ifdef _WIN32
     else
         setmode(input_file, O_BINARY);
+#endif /* _WIN32 */
 
     // Initialize output
     int output_file = STDOUT_FILENO;
     bool output_need_close = false;
     if (output_filename != NULL)
     {
-        output_file = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY);
+        output_file = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, S_IRUSR | S_IWUSR);
         if (output_file < 0)
             fatal("No access to file %s", output_filename);
         output_need_close = true;
     }
+#ifdef _WIN32
     else
         setmode(output_file, O_BINARY);
+#endif /* _WIN32 */
 
     struct fstream input_stream = fstream_init(input_file);
     struct string buffer = string_init();
@@ -560,7 +571,10 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
                 break;
             string_to_lower(line, &lower_buffer);
             if (trie_find_anywhere(string_sub(lower_buffer, 0, line.length)))
-                write(output_file, line.data, line.length);
+            {
+                if (write(output_file, line.data, line.length) < 0)
+                    fatal("Failed to write");
+            }
             progress += line.length;
             if (output_filename != NULL)
                 print_progress(progress, input_size, false);
@@ -575,7 +589,10 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             if (line.length == 0)
                 break;
             if (trie_find_anywhere(line))
-                write(output_file, line.data, line.length);
+            {
+                if (write(output_file, line.data, line.length) < 0)
+                    fatal("Failed to write");
+            }
             progress += line.length;
             if (output_filename != NULL)
                 print_progress(progress, input_size, false);
