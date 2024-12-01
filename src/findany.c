@@ -13,6 +13,7 @@
 
 const struct option long_options[] = {
     {"case-insensitive", no_argument, NULL, 'i'},
+    {"output", required_argument, NULL, 'o'},
     {"help", no_argument, NULL, 'h'},
     {NULL, 0, NULL, 0}
 };
@@ -33,6 +34,7 @@ void print_help()
     printf("\n");
     printf("Options:\n");
     printf("  -i, --case-insensitive    accept the match regardless of upper or lower case\n");
+    printf("  -o, --output OUTPUT       redirect output to file OUTPUT\n");
     printf("  -h, --help                print this help\n");
 }
 
@@ -402,26 +404,43 @@ bool trie_find_anywhere(struct string str)
     return false;
 }
 
-void findany(unsigned char* substrings_filename, unsigned char* input_filename, bool case_insensitive)
+void findany(unsigned char* substrings_filename, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive)
 {
     trie_build(substrings_filename, case_insensitive);
 
-    int src = STDIN_FILENO;
-    bool need_close = false;
+    // Initialize input
+    int input_file = STDIN_FILENO;
+    bool input_need_close = false;
     if (input_filename != NULL)
     {
-        src = open(input_filename, O_RDONLY | O_BINARY);
-        if (src < 0)
+        input_file = open(input_filename, O_RDONLY | O_BINARY);
+        if (input_file < 0)
         {
             printf("No access to file %s", input_filename);
             exit(EXIT_FAILURE);
         }
-        need_close = true;
+        input_need_close = true;
     }
-    int dst = STDOUT_FILENO;
-    setmode(STDOUT_FILENO, O_BINARY);
+    else
+        setmode(input_file, O_BINARY);
 
-    struct fstream srcstream = fstream_init(src);
+    // Initialize output
+    int output_file = STDOUT_FILENO;
+    bool output_need_close = false;
+    if (output_filename != NULL)
+    {
+        output_file = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY);
+        if (output_file < 0)
+        {
+            printf("No access to file %s", output_filename);
+            exit(EXIT_FAILURE);
+        }
+        output_need_close = true;
+    }
+    else
+        setmode(output_file, O_BINARY);
+
+    struct fstream input_stream = fstream_init(input_file);
     struct string buffer = string_init();
 
     if (case_insensitive)
@@ -429,12 +448,12 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
         struct string lower_buffer = string_init();
         while (true)
         {
-            struct string line = fstream_read_line(&srcstream, &buffer, '\n');
+            struct string line = fstream_read_line(&input_stream, &buffer, '\n');
             if (line.length == 0)
                 break;
             string_to_lower(line, &lower_buffer);
             if (trie_find_anywhere(string_sub(lower_buffer, 0, line.length)))
-                write(dst, line.data, line.length);
+                write(output_file, line.data, line.length);
         }
         string_destroy(&lower_buffer);
     }
@@ -442,18 +461,20 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
     {
         while (true)
         {
-            struct string line = fstream_read_line(&srcstream, &buffer, '\n');
+            struct string line = fstream_read_line(&input_stream, &buffer, '\n');
             if (line.length == 0)
                 break;
             if (trie_find_anywhere(line))
-                write(dst, line.data, line.length);
+                write(output_file, line.data, line.length);
         }
     }
 
     string_destroy(&buffer);
-    fstream_destroy(&srcstream);
-    if (need_close)
-        close(src);
+    fstream_destroy(&input_stream);
+    if (input_need_close)
+        close(input_file);
+    if (output_need_close)
+        close(output_file);
 }
 
 int main(int argc, char **argv)
@@ -462,6 +483,7 @@ int main(int argc, char **argv)
 
     unsigned char* substrings_filename;
     unsigned char* input_filename = NULL;
+    unsigned char* output_filename = NULL;
     bool case_insensitive = false;
 
     if (argc <= 1)
@@ -472,9 +494,8 @@ int main(int argc, char **argv)
     else
     {
         int optc;
-        int opti = 1;
 
-        while ((optc = getopt_long(argc, argv, "hi", long_options, NULL)) != -1)
+        while ((optc = getopt_long(argc, argv, "hio:", long_options, NULL)) != -1)
         {
             switch (optc)
             {
@@ -486,19 +507,22 @@ int main(int argc, char **argv)
                 case_insensitive = true;
                 break;
 
+            case 'o':
+                output_filename = optarg;
+                break;
+
             default:
                 print_usage();
                 exit(EXIT_FAILURE);
             }
-            opti++;
         }
 
-        switch (argc - opti)
+        switch (argc - optind)
         {
         case 2:
-            input_filename = argv[opti + 1];
+            input_filename = argv[optind + 1];
         case 1:
-            substrings_filename = argv[opti];
+            substrings_filename = argv[optind];
             break;
 
         default:
@@ -507,6 +531,6 @@ int main(int argc, char **argv)
         }
     }
 
-    findany(substrings_filename, input_filename, case_insensitive);
+    findany(substrings_filename, input_filename, output_filename, case_insensitive);
     exit(EXIT_SUCCESS);
 }
