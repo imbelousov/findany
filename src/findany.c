@@ -71,6 +71,11 @@ void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 #define _memchr(buf, val, max_count) memchr(buf, val, max_count)
 #endif /* __SSE4_1__ */
 
+#define fatal(...) \
+    printf(__VA_ARGS__);\
+    exit(EXIT_FAILURE)
+#define fatal_nomem() fatal("Not enough memory")
+
 struct string
 {
     unsigned char* data;
@@ -90,7 +95,7 @@ void string_expand(struct string* str, size_t min_length)
     {
         str->data = malloc(min_length);
         if (str->data == NULL)
-            exit(EXIT_FAILURE);
+            fatal_nomem();
         str->length = min_length;
         return;
     }
@@ -98,7 +103,7 @@ void string_expand(struct string* str, size_t min_length)
         return;
     str->data = realloc(str->data, min_length);
     if (str->data == NULL)
-        exit(EXIT_FAILURE);
+        fatal_nomem();
     str->length = min_length;
 }
 
@@ -119,7 +124,7 @@ void string_to_lower(const struct string src, struct string* dst)
         // Build a mapping "char -> lowercase char"
         lookup = malloc(256);
         if (lookup == NULL)
-            exit(EXIT_FAILURE);
+            fatal_nomem();
         for (int c = 0; c <= 255; c++)
             lookup[c] = tolower(c);
     }
@@ -159,7 +164,7 @@ struct fstream fstream_init(int file)
     stream.buffer_capacity = FSTREAM_BUFFER_DEFAULT_CAPACITY;
     stream.buffer = malloc(stream.buffer_capacity);
     if (stream.buffer == NULL)
-        exit(EXIT_FAILURE);
+        fatal_nomem();
     stream.buffer_size = 0;
     stream.buffer_offset = 0;
     stream.file = file;
@@ -257,7 +262,7 @@ void trie_expand()
     trie.size *= 2;
     trie.mem = realloc(trie.mem, trie.size * TRIE_NODE_SIZE);
     if (trie.mem == NULL)
-        exit(EXIT_FAILURE);
+        fatal_nomem();
 }
 
 size_t trie_new_node()
@@ -277,6 +282,8 @@ void trie_init()
 {
     trie.size = TRIE_DEFAULT_SIZE;
     trie.mem = malloc(trie.size * TRIE_NODE_SIZE);
+    if (trie.mem == NULL)
+        fatal_nomem();
     // Root node
     trie_new_node();
 }
@@ -329,10 +336,7 @@ void trie_build(unsigned char* substrings_filename, bool case_insensitive)
 {
     int file = open(substrings_filename, O_RDONLY | O_BINARY);
     if (file < 0)
-    {
-        printf("No access to file %s", substrings_filename);
-        exit(EXIT_FAILURE);
-    }
+        fatal("No access to file %s", substrings_filename);
 
     trie_init();
 
@@ -415,10 +419,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
     {
         input_file = open(input_filename, O_RDONLY | O_BINARY);
         if (input_file < 0)
-        {
-            printf("No access to file %s", input_filename);
-            exit(EXIT_FAILURE);
-        }
+            fatal("No access to file %s", input_filename);
         input_need_close = true;
     }
     else
@@ -431,10 +432,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
     {
         output_file = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY);
         if (output_file < 0)
-        {
-            printf("No access to file %s", output_filename);
-            exit(EXIT_FAILURE);
-        }
+            fatal("No access to file %s", output_filename);
         output_need_close = true;
     }
     else
@@ -494,7 +492,6 @@ int main(int argc, char **argv)
     else
     {
         int optc;
-
         while ((optc = getopt_long(argc, argv, "hio:", long_options, NULL)) != -1)
         {
             switch (optc)
