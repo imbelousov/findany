@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <smmintrin.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #define PROGRAM_NAME "findany"
 
@@ -411,6 +413,89 @@ bool trie_find_anywhere(struct string str)
     return false;
 }
 
+void format_size(size_t size, char* buffer)
+{
+    if ((size >> 11) == 0)
+        sprintf(buffer, "%d", size);
+    else if ((size >> 21) == 0)
+    {
+        float k = (float) size / 1024.0f;
+        sprintf(buffer, "%.2fK", k);
+    }
+    else if ((size >> 31) == 0)
+    {
+        float m = (float) size / (1024.0f * 1024.0f);
+        sprintf(buffer, "%.2fM", m);
+    }
+    else
+    {
+        float g = (float) size / (1024.0f * 1024.0f * 1024.0f);
+        sprintf(buffer, "%.2fG", g);
+    }
+}
+
+char* build_progress_str(size_t processed, size_t size)
+{
+    static char buffer[256];
+
+    char processed_str[256];
+    char size_str[256];
+    format_size(processed, processed_str);
+    format_size(size, size_str);
+    
+    // Progress bar
+    char progress_str[256] = "";
+    if (size > 0)
+    {
+        const int progress_bar_len = 32;
+        char progress_bar[progress_bar_len + 1];
+        float progress = (float) processed / (float) size;
+        memset(progress_bar, ' ', progress_bar_len);
+        progress_bar[0] = progress_bar[progress_bar_len - 1] = '|';
+        progress_bar[progress_bar_len] = '\0';
+        for (int i = 0; i < (progress_bar_len - 2) * progress; i++)
+            progress_bar[i + 1] = '*';
+        sprintf(progress_str, "%s %.2f%%   ", progress_bar, progress * 100.0f);
+    }
+
+    sprintf(buffer, "%s%s / %s", progress_str, processed_str, size > 0 ? size_str : "?");
+
+    return buffer;
+}
+
+void print_ws(size_t length)
+{
+    char buffer[256];
+    memset(buffer, ' ', length);
+    buffer[length] = '\0';
+    printf("%s", buffer);
+}
+
+void print_progress(size_t processed, size_t size, bool force)
+{
+    static clock_t prevtime = 0;
+    static size_t prevprocessed = 0;
+    static size_t prevlength = 0;
+    clock_t time = clock();
+    if (prevtime == 0)
+    {
+        prevtime = time;
+        prevprocessed = processed;
+        return;
+    }
+    if (time - prevtime > 1000 || force)
+    {
+        char* progress_str = build_progress_str(processed, size);
+        size_t length = strlen(progress_str);
+        printf("\r%s", progress_str);
+        if (prevlength > length)
+            print_ws(prevlength - length);
+        prevtime = time;
+        prevprocessed = processed;
+        prevlength = length;
+    }
+}
+
 void findany(unsigned char* substrings_filename, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive)
 {
     trie_build(substrings_filename, case_insensitive);
@@ -418,12 +503,16 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
     // Initialize input
     int input_file = STDIN_FILENO;
     bool input_need_close = false;
+    size_t input_size = 0;
     if (input_filename != NULL)
     {
         input_file = open(input_filename, O_RDONLY | O_BINARY);
         if (input_file < 0)
             fatal("No access to file %s", input_filename);
         input_need_close = true;
+        struct _stat64 stat;
+        if (fstat64(input_file, &stat) >= 0)
+            input_size = stat.st_size;
     }
     else
         setmode(input_file, O_BINARY);
@@ -443,6 +532,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
 
     struct fstream input_stream = fstream_init(input_file);
     struct string buffer = string_init();
+    size_t progress = 0;
 
     if (case_insensitive)
     {
@@ -455,6 +545,9 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             string_to_lower(line, &lower_buffer);
             if (trie_find_anywhere(string_sub(lower_buffer, 0, line.length)))
                 write(output_file, line.data, line.length);
+            progress += line.length;
+            if (output_filename != NULL)
+                print_progress(progress, input_size, false);
         }
         string_destroy(&lower_buffer);
     }
@@ -467,7 +560,15 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
                 break;
             if (trie_find_anywhere(line))
                 write(output_file, line.data, line.length);
+            progress += line.length;
+            if (output_filename != NULL)
+                print_progress(progress, input_size, false);
         }
+    }
+    if (output_filename != NULL)
+    {
+        print_progress(progress, input_size, true);
+        printf("\n");
     }
 
     string_destroy(&buffer);
