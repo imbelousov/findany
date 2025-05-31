@@ -521,14 +521,14 @@ void print_progress(size_t processed, size_t size, bool force)
     }
 }
 
-void handle_line(struct string line, size_t input_size, int output_file, unsigned char* output_filename, bool invert, size_t* progress)
+void handle_line(struct string line_for_search, struct string line_original, size_t input_size, int output_file, unsigned char* output_filename, bool invert, size_t* progress)
 {
-    if (trie_find_anywhere(line) ^ invert)
+    if (trie_find_anywhere(line_for_search) ^ invert)
     {
-        if (write(output_file, line.data, line.length) < 0)
+        if (write(output_file, line_original.data, line_original.length) < 0)
             fatal("Failed to write");
     }
-    *progress += line.length;
+    *progress += line_original.length;
     if (output_filename != NULL)
         print_progress(*progress, input_size, false);
 }
@@ -584,7 +584,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             if (line.length == 0)
                 break;
             string_to_lower(line, &lower_buffer);
-            handle_line(string_sub(lower_buffer, 0, line.length), input_size, output_file, output_filename, invert, &progress);
+            handle_line(string_sub(lower_buffer, 0, line.length), line, input_size, output_file, output_filename, invert, &progress);
         }
         string_destroy(&lower_buffer);
     }
@@ -595,7 +595,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             struct string line = fstream_read_line(&input_stream, &buffer, '\n');
             if (line.length == 0)
                 break;
-            handle_line(line, input_size, output_file, output_filename, invert, &progress);
+            handle_line(line, line, input_size, output_file, output_filename, invert, &progress);
         }
     }
     if (output_filename != NULL)
