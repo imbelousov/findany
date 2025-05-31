@@ -505,7 +505,7 @@ void print_progress(size_t processed, size_t size, bool force)
         prevtime = time;
         return;
     }
-    if (time - prevtime > CLOCKS_PER_SEC)
+    if (time - prevtime > CLOCKS_PER_SEC || force)
     {
         char* progress_str = build_progress_str(processed, size);
         size_t length = strlen(progress_str);
