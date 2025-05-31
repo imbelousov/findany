@@ -8,6 +8,7 @@ A command-line utility that retains only those lines from a text file or standar
 - Reads from standard input or a text file.
 - Writes filtered lines to standard output or redirects them to a text file.
 - Optional case-insensitive search.
+- Optional inversion of search.
 - Supports binary files.
 - Progress bar to show search progress when processing large files, if the output is redirected to a file.
 - Runs on Windows and Linux.
@@ -30,6 +31,7 @@ findany [OPTIONS] SUBSTRINGS [FILE]
 ### Options
 
 - `-i, --case-insensitive`: Perform a case-insensitive search. By default, searches are case-sensitive.
+- `-v, --invert`: Search for lines that contain none of the specified substrings.
 - `-o, --output OUTPUT`: Redirect the output to `OUTPUT` instead of printing to standard output. It enables a progress-bar.
 - `-h, --help`: Display the help message and exit.
 

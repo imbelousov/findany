@@ -39,6 +39,7 @@
 
 const struct option long_options[] = {
     {"case-insensitive", no_argument, NULL, 'i'},
+    {"invert", no_argument, NULL, 'v'},
     {"output", required_argument, NULL, 'o'},
     {"help", no_argument, NULL, 'h'},
     {NULL, 0, NULL, 0}
@@ -60,6 +61,7 @@ void print_help()
     printf("\n");
     printf("Options:\n");
     printf("  -i, --case-insensitive    Perform a case-insensitive search. By default, searches are case-sensitive.\n");
+    printf("  -v, --invert              Search for lines that contain none of the specified substrings.\n");
     printf("  -o, --output OUTPUT       Redirect the output to OUTPUT instead of printing to standard output. It enables a progress-bar.\n");
     printf("  -h, --help                Display the help message and exit.\n");
 }
@@ -519,7 +521,19 @@ void print_progress(size_t processed, size_t size, bool force)
     }
 }
 
-void findany(unsigned char* substrings_filename, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive)
+void handle_line(struct string line, size_t input_size, int output_file, unsigned char* output_filename, bool invert, size_t* progress)
+{
+    if (trie_find_anywhere(line) ^ invert)
+    {
+        if (write(output_file, line.data, line.length) < 0)
+            fatal("Failed to write");
+    }
+    *progress += line.length;
+    if (output_filename != NULL)
+        print_progress(*progress, input_size, false);
+}
+
+void findany(unsigned char* substrings_filename, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
 {
     trie_build(substrings_filename, case_insensitive);
 
@@ -570,14 +584,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             if (line.length == 0)
                 break;
             string_to_lower(line, &lower_buffer);
-            if (trie_find_anywhere(string_sub(lower_buffer, 0, line.length)))
-            {
-                if (write(output_file, line.data, line.length) < 0)
-                    fatal("Failed to write");
-            }
-            progress += line.length;
-            if (output_filename != NULL)
-                print_progress(progress, input_size, false);
+            handle_line(string_sub(lower_buffer, 0, line.length), input_size, output_file, output_filename, invert, &progress);
         }
         string_destroy(&lower_buffer);
     }
@@ -588,14 +595,7 @@ void findany(unsigned char* substrings_filename, unsigned char* input_filename, 
             struct string line = fstream_read_line(&input_stream, &buffer, '\n');
             if (line.length == 0)
                 break;
-            if (trie_find_anywhere(line))
-            {
-                if (write(output_file, line.data, line.length) < 0)
-                    fatal("Failed to write");
-            }
-            progress += line.length;
-            if (output_filename != NULL)
-                print_progress(progress, input_size, false);
+            handle_line(line, input_size, output_file, output_filename, invert, &progress);
         }
     }
     if (output_filename != NULL)
@@ -620,6 +620,7 @@ int main(int argc, char **argv)
     unsigned char* input_filename = NULL;
     unsigned char* output_filename = NULL;
     bool case_insensitive = false;
+    bool invert = false;
 
     if (argc <= 1)
     {
@@ -629,7 +630,7 @@ int main(int argc, char **argv)
     else
     {
         int optc;
-        while ((optc = getopt_long(argc, argv, "hio:", long_options, NULL)) != -1)
+        while ((optc = getopt_long(argc, argv, "hivo:", long_options, NULL)) != -1)
         {
             switch (optc)
             {
@@ -639,6 +640,10 @@ int main(int argc, char **argv)
 
             case 'i':
                 case_insensitive = true;
+                break;
+
+            case 'v':
+                invert = true;
                 break;
 
             case 'o':
@@ -665,6 +670,6 @@ int main(int argc, char **argv)
         }
     }
 
-    findany(substrings_filename, input_filename, output_filename, case_insensitive);
+    findany(substrings_filename, input_filename, output_filename, case_insensitive, invert);
     exit(EXIT_SUCCESS);
 }
