@@ -509,6 +509,9 @@ void print_progress(size_t processed, size_t size, bool force)
     }
     if (time - prevtime > CLOCKS_PER_SEC || force)
     {
+        if (processed > size)
+            size = processed;
+
         char* progress_str = build_progress_str(processed, size);
         size_t length = strlen(progress_str);
         printf("\r%s", progress_str);
