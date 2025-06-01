@@ -1,0 +1,23 @@
+name: Build
+
+on:
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Install dependencies
+              run: sudo apt update && sudo apt install -y build-essential
+
+            - name: Build
+              run: gcc -msse4.1 ./src/findany.c -o findany -O3
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                path: findany
