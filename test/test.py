@@ -1,5 +1,6 @@
 import os
 import pathlib
+import platform
 import pytest
 import shutil
 import subprocess
@@ -55,7 +56,8 @@ class Test:
     def test(self, case):
         self.write_tmp_file("input", case.input)
         self.write_tmp_file("substrings", case.substrings)
-        cmd = f"findany {" ".join(case.args)} substrings < input > output"
+        binpath = "findany.exe" if platform.system() == "Windows" else "./findany"
+        cmd = f"{binpath} {" ".join(case.args)} substrings < input > output"
         subprocess.Popen(cmd, shell=True, cwd=self.TMP_PATH).wait()
         actual = self.read_tmp_file("output")
         assert case.output == actual
