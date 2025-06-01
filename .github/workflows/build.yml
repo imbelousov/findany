@@ -12,12 +12,15 @@ jobs:
               uses: actions/checkout@v4
 
             - name: Install dependencies
-              run: sudo apt update && sudo apt install -y build-essential
+              run: sudo apt update && sudo apt install -y build-essential mingw-w64
 
-            - name: Build
-              run: gcc -msse4.1 ./src/findany.c -o findany -O3
+            - name: Build Linux
+              run: gcc -msse4.1 ./src/findany.c -o ./build/findany -O3
+
+            - name: Build Windows
+              run: x86_64-w64-mingw32-gcc -msse4.1 ./src/findany.c -o ./build/findany -O3
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
-                path: findany
+                path: ./build
