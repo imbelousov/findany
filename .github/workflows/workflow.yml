@@ -45,17 +45,16 @@ jobs:
               with:
                 python-version: '3.x'
 
-            - name: Change dir
-              run: cd test
-
             - name: Install dependencies
+              working-directory: ./test
               run: pip install -r requirements.txt
 
             - name: Run tests
-              run: python -m pytest -s test.py --junitxml=report.xml
+              working-directory: ./test
+              run: python -m pytest test.py --junitxml=report.xml
 
             - name: Upload test report
               uses: actions/upload-artifact@v4
               with:
                 name: test-report
-                path: report.xml
+                path: ./test/report.xml
