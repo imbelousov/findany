@@ -42,7 +42,7 @@ class Test:
     BUILD_PATH = os.path.join("..", "build")
 
     def setup_method(self):
-        shutil.rmtree(self.TMP_PATH)
+        shutil.rmtree(self.TMP_PATH, ignore_errors=True)
         shutil.copytree(self.BUILD_PATH, self.TMP_PATH)
 
     @staticmethod
