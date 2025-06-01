@@ -18,7 +18,7 @@ jobs:
               run: mkdir ./build
 
             - name: Build Linux
-              run: gcc -msse4.1 ./src/findany.c -o ./build/findany -O3
+              run: gcc -msse4.1 -flto ./src/findany.c -o ./build/findany -O3
 
             - name: Build Windows
               run: x86_64-w64-mingw32-gcc -msse4.1 ./src/findany.c -o ./build/findany -O3
