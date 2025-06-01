@@ -1,7 +1,5 @@
 # findany
 
-![tests](https://camo.githubusercontent.com/41b829d9a99830f441925cc8fc7f524c0b9a514434cb8c18066b0872f56ac601/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f74657374732d32302532307061737365642d73756363657373)
-
 A command-line utility that retains only those lines from a text file or standard input that contain at least one substring from a list.
 
 ## Features
