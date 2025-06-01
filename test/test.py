@@ -45,6 +45,7 @@ class Test:
     def setup_method(self):
         shutil.rmtree(self.TMP_PATH, ignore_errors=True)
         shutil.copytree(self.BUILD_PATH, self.TMP_PATH)
+        subprocess.run(["chmod", "+x", os.path.join(self.TMP_PATH, "findany")])
 
     @staticmethod
     def get_cases():
