@@ -25,15 +25,19 @@ class CaseModel:
         with open(yml_path, 'r') as f:
             test_config = yaml.safe_load(f)
         name = ".".join(pathlib.Path(yml_path).relative_to(Test.CASES_PATH).with_suffix("").parts)
-        substrings = cls.join(cls.to_array_if_str(test_config.get("substrings", [])))
-        input = cls.join(cls.to_array_if_str(test_config.get("input", [])))
-        output = cls.join(cls.to_array_if_str(test_config.get("output", [])))
-        args = cls.to_array_if_str(test_config.get("args", []))
+        substrings = cls.join(cls.to_array(test_config.get("substrings", [])))
+        input = cls.join(cls.to_array(test_config.get("input", [])))
+        output = cls.join(cls.to_array(test_config.get("output", [])))
+        args = cls.to_array(test_config.get("args", []))
         return cls(name, substrings, input, output, args)
 
     @staticmethod
-    def to_array_if_str(value):
-        return [value] if isinstance(value, str) else value
+    def to_array(value):
+        if value == None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
     
     @staticmethod
     def join(lines):

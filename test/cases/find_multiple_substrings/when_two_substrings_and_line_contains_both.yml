@@ -1,0 +1,10 @@
+substrings: [first, second]
+
+input:
+- line before anything
+- both first and second lines
+- another line
+
+output:
+- both first and second lines
+- ""
