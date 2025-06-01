@@ -40,5 +40,22 @@ jobs:
                 name: build-artifact
                 path: ./build
 
-            - name: List files
-              run: ls ./build
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                python-version: '3.x'
+
+            - name: Change dir
+              run: cd test
+
+            - name: Install dependencies
+              run: pip install -r requirements.txt
+
+            - name: Run tests
+              run: python -m pytest -s test.py --junitxml=report.xml
+
+            - name: Upload test report
+              uses: actions/upload-artifact@v4
+              with:
+                name: test-report
+                path: report.xml
