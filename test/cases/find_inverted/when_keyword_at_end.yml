@@ -1,0 +1,4 @@
+substrings: third
+input: [first, second, third]
+output: [first, second, ""]
+args: -v

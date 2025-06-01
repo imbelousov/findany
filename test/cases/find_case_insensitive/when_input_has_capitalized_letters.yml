@@ -1,0 +1,4 @@
+substrings: text
+input: this is a Text
+output: this is a Text
+args: -i
