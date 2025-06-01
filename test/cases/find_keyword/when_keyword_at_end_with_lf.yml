@@ -1,0 +1,3 @@
+substrings: third
+input: [first, second, third, ""]
+output: [third, ""]

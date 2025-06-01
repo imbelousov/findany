@@ -22,6 +22,14 @@ It is recommended to enable SSE4.1 for low-level optimizations.
 gcc -msse4.1 ./src/findany.c -o findany -O3
 ```
 
+## Test
+
+Functional tests are configured using YAML files and run with pytest.
+
+```
+cd ./test && python -m pytest ./test.py
+```
+
 ## Usage
 
 ```

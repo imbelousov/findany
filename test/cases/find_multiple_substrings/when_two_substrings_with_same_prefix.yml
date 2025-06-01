@@ -1,0 +1,16 @@
+substrings: [fire, first]
+
+input:
+- line before anything
+- this is the very first line
+- this is the first line
+- separating line
+- this is the second line
+- fire line
+- another line
+
+output:
+- this is the very first line
+- this is the first line
+- fire line
+- ""
