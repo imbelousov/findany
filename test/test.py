@@ -7,6 +7,10 @@ import subprocess
 import yaml
 
 
+def is_windows():
+    return platform.system() == "Windows"
+
+
 class CaseModel:
 
     def __init__(self, name, substrings, input, output, args):
@@ -45,7 +49,8 @@ class Test:
     def setup_method(self):
         shutil.rmtree(self.TMP_PATH, ignore_errors=True)
         shutil.copytree(self.BUILD_PATH, self.TMP_PATH)
-        subprocess.run(["chmod", "+x", os.path.join(self.TMP_PATH, "findany")])
+        if not is_windows():
+            subprocess.run(["chmod", "+x", os.path.join(self.TMP_PATH, "findany")])
 
     @staticmethod
     def get_cases():
@@ -57,7 +62,7 @@ class Test:
     def test(self, case):
         self.write_tmp_file("input", case.input)
         self.write_tmp_file("substrings", case.substrings)
-        binpath = "findany.exe" if platform.system() == "Windows" else "./findany"
+        binpath = "findany.exe" if is_windows() else "./findany"
         cmd = f"{binpath} {" ".join(case.args)} substrings < input > output"
         subprocess.Popen(cmd, shell=True, cwd=self.TMP_PATH).wait()
         actual = self.read_tmp_file("output")
