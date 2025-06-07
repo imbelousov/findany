@@ -35,7 +35,7 @@ cd ./test && python -m pytest ./test.py
 ## Usage
 
 ```
-findany [OPTIONS] SUBSTRINGS [FILE]
+findany [OPTIONS] [SUBSTRINGS] [FILE]
 ```
 
 ### Options
@@ -43,6 +43,7 @@ findany [OPTIONS] SUBSTRINGS [FILE]
 - `-i, --case-insensitive`: Perform a case-insensitive search. By default, searches are case-sensitive.
 - `-v, --invert`: Search for lines that contain none of the specified substrings.
 - `-o, --output OUTPUT`: Redirect the output to `OUTPUT` instead of printing to standard output. It enables a progress-bar.
+- `-s, --substring SUBSTRING`: Receive a substring from a command-line argument instead of a file. It can be used multiple times. Must not be used together with the SUBSTRINGS argument.
 - `-h, --help`: Display the help message and exit.
 
 ### Arguments
@@ -65,6 +66,11 @@ findany -i substrings.txt input.txt
 3. Read from standard input and write to standard output:
 ```
 cat input.txt | findany substrings.txt > output.txt
+```
+
+4. Read from standard input, write to standard output, pass two substrings via command-line arguments:
+```
+findany -s mySubstring -s otherSubstring < input.txt > output.txt
 ```
 
 ## License

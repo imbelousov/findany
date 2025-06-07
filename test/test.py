@@ -64,10 +64,12 @@ class Test:
 
     @pytest.mark.parametrize("case", get_cases(), ids=lambda case: case.name)
     def test(self, case):
+        has_substrings = len(case.substrings) > 0
         self.write_tmp_file("input", case.input)
-        self.write_tmp_file("substrings", case.substrings)
+        if has_substrings:
+            self.write_tmp_file("substrings", case.substrings)
         binpath = "findany.exe" if is_windows() else "./findany"
-        cmd = f"{binpath} {" ".join(case.args)} substrings < input > output"
+        cmd = f"{binpath} {" ".join(case.args)} {"substrings" if has_substrings else ""} < input > output"
         subprocess.Popen(cmd, shell=True, cwd=self.TMP_PATH).wait()
         actual = self.read_tmp_file("output")
         assert case.output == actual

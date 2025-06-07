@@ -41,11 +41,12 @@ const struct option long_options[] = {
     {"case-insensitive", no_argument, NULL, 'i'},
     {"invert", no_argument, NULL, 'v'},
     {"output", required_argument, NULL, 'o'},
+    {"substring", required_argument, NULL, 's'},
     {"help", no_argument, NULL, 'h'},
     {NULL, 0, NULL, 0}
 };
 
-#define print_only_usage() printf("Usage: %s [OPTIONS] SUBSTRINGS [FILE]\n", PROGRAM_NAME)
+#define print_only_usage() printf("Usage: %s [OPTIONS] [SUBSTRINGS] [FILE]\n", PROGRAM_NAME)
 
 void print_usage()
 {
@@ -60,10 +61,13 @@ void print_help()
     printf("Read standard input if FILE is missing\n");
     printf("\n");
     printf("Options:\n");
-    printf("  -i, --case-insensitive    Perform a case-insensitive search. By default, searches are case-sensitive.\n");
-    printf("  -v, --invert              Search for lines that contain none of the specified substrings.\n");
-    printf("  -o, --output OUTPUT       Redirect the output to OUTPUT instead of printing to standard output. It enables a progress-bar.\n");
-    printf("  -h, --help                Display the help message and exit.\n");
+    printf("  -i, --case-insensitive       Perform a case-insensitive search. By default, searches are case-sensitive.\n");
+    printf("  -v, --invert                 Search for lines that contain none of the specified substrings.\n");
+    printf("  -o, --output OUTPUT          Redirect the output to OUTPUT instead of printing to standard output.\n");
+    printf("                               It enables a progress-bar.\n");
+    printf("  -s, --substring SUBSTRING    Receive a substring from a command-line argument instead of a file. It can be\n");
+    printf("                               used multiple times. Must not be used together with the SUBSTRINGS argument.\n");
+    printf("  -h, --help                   Display the help message and exit.\n");
 }
 
 #ifdef __SSE4_1__
@@ -107,6 +111,22 @@ void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 while (false)
 #define fatal_nomem() fatal("Not enough memory")
 
+void* malloc_or_fatal(size_t size)
+{
+    void* memory = malloc(size);
+    if (memory == NULL)
+        fatal_nomem();
+    return memory;
+}
+
+void* realloc_or_fatal(void* memory, size_t new_size)
+{
+    memory = realloc(memory, new_size);
+    if (memory == NULL)
+        fatal_nomem();
+    return memory;
+}
+
 struct string
 {
     unsigned char* data;
@@ -124,17 +144,13 @@ void string_expand(struct string* str, size_t min_length)
 {
     if (str->data == NULL)
     {
-        str->data = malloc(min_length);
-        if (str->data == NULL)
-            fatal_nomem();
+        str->data = malloc_or_fatal(min_length);
         str->length = min_length;
         return;
     }
     if (str->length >= min_length)
         return;
-    str->data = realloc(str->data, min_length);
-    if (str->data == NULL)
-        fatal_nomem();
+    str->data = realloc_or_fatal(str->data, min_length);
     str->length = min_length;
 }
 
@@ -153,9 +169,7 @@ void string_to_lower(const struct string src, struct string* dst)
     if (lookup == NULL)
     {
         // Build a mapping "char -> lowercase char"
-        lookup = malloc(256);
-        if (lookup == NULL)
-            fatal_nomem();
+        lookup = malloc_or_fatal(256);
         for (int c = 0; c <= 255; c++)
             lookup[c] = tolower(c);
     }
@@ -193,9 +207,7 @@ struct fstream fstream_init(int file)
 {
     struct fstream stream;
     stream.buffer_capacity = FSTREAM_BUFFER_DEFAULT_CAPACITY;
-    stream.buffer = malloc(stream.buffer_capacity);
-    if (stream.buffer == NULL)
-        fatal_nomem();
+    stream.buffer = malloc_or_fatal(stream.buffer_capacity);
     stream.buffer_size = 0;
     stream.buffer_offset = 0;
     stream.file = file;
@@ -291,9 +303,7 @@ struct
 void trie_expand()
 {
     trie.size *= 2;
-    trie.mem = realloc(trie.mem, trie.size * TRIE_NODE_SIZE);
-    if (trie.mem == NULL)
-        fatal_nomem();
+    trie.mem = realloc_or_fatal(trie.mem, trie.size * TRIE_NODE_SIZE);
 }
 
 size_t trie_new_node()
@@ -312,9 +322,7 @@ size_t trie_new_node()
 void trie_init()
 {
     trie.size = TRIE_DEFAULT_SIZE;
-    trie.mem = malloc(trie.size * TRIE_NODE_SIZE);
-    if (trie.mem == NULL)
-        fatal_nomem();
+    trie.mem = malloc_or_fatal(trie.size * TRIE_NODE_SIZE);
     // Root node
     trie_new_node();
 }
@@ -363,7 +371,7 @@ void trie_add(ssize_t idx, unsigned char* str, size_t length)
     }
 }
 
-void trie_build(unsigned char* substrings_filename, bool case_insensitive)
+void trie_build_from_file(unsigned char* substrings_filename, bool case_insensitive)
 {
     int file = open(substrings_filename, O_RDONLY | O_BINARY);
     if (file < 0)
@@ -375,14 +383,14 @@ void trie_build(unsigned char* substrings_filename, bool case_insensitive)
     struct string buffer = string_init();
     while (true)
     {
-        struct string line = fstream_read_line(&stream, &buffer, '\n');
-        if (line.length == 0)
+        struct string substring = fstream_read_line(&stream, &buffer, '\n');
+        if (substring.length == 0)
             break;
         if (case_insensitive)
-            string_to_lower(line, &line);
+            string_to_lower(substring, &substring);
 
-        unsigned char* str = line.data;
-        size_t length = line.length;
+        unsigned char* str = substring.data;
+        size_t length = substring.length;
         if (str[length - 1] == '\n')
             str[--length] = '\0';
         if (length > 0 && str[length - 1] == '\r')
@@ -394,6 +402,22 @@ void trie_build(unsigned char* substrings_filename, bool case_insensitive)
     close(file);
     string_destroy(&buffer);
     fstream_destroy(&stream);
+}
+
+void trie_build_from_args(struct string* substrings, size_t substrings_count, bool case_insensitive)
+{
+    trie_init();
+
+    for (size_t i = 0; i < substrings_count; i++)
+    {
+        struct string substring = substrings[i];
+        if (substring.length == 0)
+            continue;
+        if (case_insensitive)
+            string_to_lower(substring, &substring);
+
+        trie_add(0, substring.data, substring.length);
+    }
 }
 
 bool trie_find(ssize_t idx, struct string str)
@@ -536,9 +560,12 @@ void handle_line(struct string line_for_search, struct string line_original, siz
         print_progress(*progress, input_size, false);
 }
 
-void findany(unsigned char* substrings_filename, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
+void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
 {
-    trie_build(substrings_filename, case_insensitive);
+    if (substrings_filename != NULL)
+        trie_build_from_file(substrings_filename, case_insensitive);
+    else
+        trie_build_from_args(substrings, substrings_count, case_insensitive);
 
     // Initialize input
     int input_file = STDIN_FILENO;
@@ -619,7 +646,9 @@ int main(int argc, char **argv)
 {
     setlocale(LC_ALL, "");
 
-    unsigned char* substrings_filename;
+    unsigned char* substrings_filename = NULL;
+    struct string* substrings = NULL;
+    size_t substrings_count = 0;
     unsigned char* input_filename = NULL;
     unsigned char* output_filename = NULL;
     bool case_insensitive = false;
@@ -633,7 +662,7 @@ int main(int argc, char **argv)
     else
     {
         int optc;
-        while ((optc = getopt_long(argc, argv, "hivo:", long_options, NULL)) != -1)
+        while ((optc = getopt_long(argc, argv, "hivo:s:", long_options, NULL)) != -1)
         {
             switch (optc)
             {
@@ -653,6 +682,12 @@ int main(int argc, char **argv)
                 output_filename = optarg;
                 break;
 
+            case 's':
+                substrings = realloc_or_fatal(substrings, sizeof(struct string) * (substrings_count + 1));
+                struct string substring = {optarg, strlen(optarg)};
+                substrings[substrings_count++] = substring;
+                break;
+
             default:
                 print_usage();
                 exit(EXIT_FAILURE);
@@ -664,15 +699,26 @@ int main(int argc, char **argv)
         case 2:
             input_filename = argv[optind + 1];
         case 1:
-            substrings_filename = argv[optind];
+            if (substrings != NULL)
+                input_filename = argv[optind];
+            else
+                substrings_filename = argv[optind];
             break;
 
         default:
+            if (substrings != NULL)
+                break;
+            print_usage();
+            exit(EXIT_FAILURE);
+        }
+
+        if (substrings != NULL && substrings_filename != NULL)
+        {
             print_usage();
             exit(EXIT_FAILURE);
         }
     }
 
-    findany(substrings_filename, input_filename, output_filename, case_insensitive, invert);
+    findany(substrings_filename, substrings, substrings_count, input_filename, output_filename, case_insensitive, invert);
     exit(EXIT_SUCCESS);
 }
