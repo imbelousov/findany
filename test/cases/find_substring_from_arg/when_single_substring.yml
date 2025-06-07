@@ -1,0 +1,3 @@
+input: [first, second]
+output: second
+args: [-s, sec]

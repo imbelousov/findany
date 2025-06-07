@@ -1,0 +1,3 @@
+input: [first, second, third, fourth, fifth]
+output: [second, fourth, fifth]
+args: [-s, sec, -s, four, -s, fifth]
