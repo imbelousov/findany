@@ -23,14 +23,14 @@ jobs:
       - name: Make binary executable
         run: chmod +x ./build/findany
 
-      - name: [npm] Copy binaries
+      - name: "[npm] Copy binaries"
         run: |
           mkdir -p ./publish/npm/bin
           cp -r ./build/* ./publish/npm/bin/
 
-      - name: [npm] Set auth token
+      - name: "[npm] Set auth token"
         run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
 
-      - name: [npm] Publish
+      - name: "[npm] Publish"
         working-directory: ./publish
         run: npm publish
