@@ -13,23 +13,28 @@ def is_windows():
 
 class CaseModel:
 
-    def __init__(self, name, substrings, input, output, args):
+    KEYWORD_CMD = "cmd"
+    KEYWORD_ASSERT = "assert"
+
+    def __init__(self, name, cmd, setup_files, assert_files):
         self.name = name
-        self.substrings = substrings
-        self.input = input
-        self.output = output
-        self.args = args
+        self.cmd = cmd
+        self.setup_files = setup_files
+        self.assert_files = assert_files
 
     @classmethod
     def parse(cls, yml_path):
         with open(yml_path, 'r') as f:
             test_config = yaml.safe_load(f)
         name = ".".join(pathlib.Path(yml_path).relative_to(Test.CASES_PATH).with_suffix("").parts)
-        substrings = cls.join(cls.to_array(test_config.get("substrings", [])))
-        input = cls.join(cls.to_array(test_config.get("input", [])))
-        output = cls.join(cls.to_array(test_config.get("output", [])))
-        args = cls.to_array(test_config.get("args", []))
-        return cls(name, substrings, input, output, args)
+        cmd = test_config.get("cmd")
+        setup_files = cls.normalize({k: v for k, v in test_config.items() if k not in [cls.KEYWORD_CMD, cls.KEYWORD_ASSERT]})
+        assert_files = cls.normalize(test_config.get(cls.KEYWORD_ASSERT, {}))
+        return cls(name, cmd, setup_files, assert_files)
+
+    @classmethod
+    def normalize(cls, dict):
+        return {k: "\n".join(cls.to_array(v)) for k, v in dict.items()}
 
     @staticmethod
     def to_array(value):
@@ -38,14 +43,11 @@ class CaseModel:
         if isinstance(value, str):
             return [value]
         return value
-    
-    @staticmethod
-    def join(lines):
-        return "\n".join(lines)
 
 
 class Test:
 
+    PROGRAM_NAME = "findany"
     CASES_PATH = "cases"
     TMP_PATH = "tmp"
     BUILD_PATH = os.path.join("..", "build")
@@ -64,15 +66,20 @@ class Test:
 
     @pytest.mark.parametrize("case", get_cases(), ids=lambda case: case.name)
     def test(self, case):
-        has_substrings = len(case.substrings) > 0
-        self.write_tmp_file("input", case.input)
-        if has_substrings:
-            self.write_tmp_file("substrings", case.substrings)
-        binpath = "findany.exe" if is_windows() else "./findany"
-        cmd = f"{binpath} {" ".join(case.args)} {"substrings" if has_substrings else ""} < input > output"
+        for name, content in case.setup_files.items():
+            self.write_tmp_file(name, content)
+        cmd = case.cmd
+        if is_windows():
+            cmd = cmd.replace(self.PROGRAM_NAME, f"{self.PROGRAM_NAME}.exe")
+        else:
+            cmd = cmd.replace(self.PROGRAM_NAME, f"./{self.PROGRAM_NAME}")
+
         subprocess.Popen(cmd, shell=True, cwd=self.TMP_PATH).wait()
-        actual = self.read_tmp_file("output")
-        assert case.output == actual
+
+        assert len(case.assert_files) > 0
+        for name, content in case.assert_files.items():
+            actual = self.read_tmp_file(name)
+            assert content == actual
 
     def write_tmp_file(self, name, content):
         with open(os.path.join(self.TMP_PATH, name), 'w') as f:

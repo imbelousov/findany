@@ -1,3 +1,5 @@
+cmd: findany -o output substrings input
 substrings: something
 input: this is a text
-output: 
+assert:
+  output: 

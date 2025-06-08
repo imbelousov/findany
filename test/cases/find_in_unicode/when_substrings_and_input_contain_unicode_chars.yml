@@ -1,3 +1,5 @@
+cmd: findany -o output substrings input
+
 substrings:
 - 日本
 - русск
@@ -12,8 +14,9 @@ input:
 - Texte avec des caractères français complexes
 - Čmáranice nad písmenami
 
-output:
-- Текст на русском языке
-- 日本語テキスト
-- Texte avec des caractères français complexes
-- Čmáranice nad písmenami
+assert:
+  output:
+  - Текст на русском языке
+  - 日本語テキスト
+  - Texte avec des caractères français complexes
+  - Čmáranice nad písmenami

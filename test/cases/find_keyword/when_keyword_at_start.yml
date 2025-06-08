@@ -1,3 +1,5 @@
+cmd: findany -o output substrings input
 substrings: first
 input: [first, second, third]
-output: [first, ""]
+assert:
+  output: [first, ""]

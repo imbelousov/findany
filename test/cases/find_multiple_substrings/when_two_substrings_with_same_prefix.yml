@@ -1,3 +1,5 @@
+cmd: findany -o output substrings input
+
 substrings: [fire, first]
 
 input:
@@ -9,8 +11,9 @@ input:
 - fire line
 - another line
 
-output:
-- this is the very first line
-- this is the first line
-- fire line
-- ""
+assert:
+  output:
+  - this is the very first line
+  - this is the first line
+  - fire line
+  - ""

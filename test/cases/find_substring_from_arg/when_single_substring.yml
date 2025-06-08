@@ -1,3 +1,4 @@
+cmd: findany -s sec -o output input
 input: [first, second]
-output: second
-args: [-s, sec]
+assert:
+  output: second
