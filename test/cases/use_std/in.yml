@@ -1,0 +1,5 @@
+cmd: findany -o output substrings < input
+input: [aaa, bbb, ccc]
+substrings: b
+assert:
+  output: [bbb, ""]

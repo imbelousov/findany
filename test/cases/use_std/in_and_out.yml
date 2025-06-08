@@ -1,0 +1,5 @@
+cmd: findany substrings < input > output
+input: [aaa, bbb, ccc]
+substrings: b
+assert:
+  output: [bbb, ""]
