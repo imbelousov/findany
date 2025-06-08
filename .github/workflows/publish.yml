@@ -1,0 +1,36 @@
+name: publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./build
+
+      - name: Make binary executable
+        run: chmod +x ./build/findany
+
+      - name: "[npm] Copy binaries"
+        run: |
+          mkdir -p ./publish/npm/bin
+          cp -r ./build/* ./publish/npm/bin/
+
+      - name: "[npm] Set auth token"
+        run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
+
+      - name: "[npm] Publish"
+        working-directory: ./publish
+        run: npm publish
