@@ -1,3 +1,4 @@
+cmd: findany -s sec -s four -s fifth -o output input
 input: [first, second, third, fourth, fifth]
-output: [second, fourth, fifth]
-args: [-s, sec, -s, four, -s, fifth]
+assert:
+  output: [second, fourth, fifth]

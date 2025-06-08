@@ -1,3 +1,5 @@
+cmd: findany -o output substrings input
+
 substrings: [first, second]
 
 input:
@@ -5,6 +7,7 @@ input:
 - both first and second lines
 - another line
 
-output:
-- both first and second lines
-- ""
+assert:
+  output:
+  - both first and second lines
+  - ""

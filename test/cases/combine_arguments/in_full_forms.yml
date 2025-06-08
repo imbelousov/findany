@@ -1,0 +1,11 @@
+cmd: findany --case-insensitive --invert --output output.txt --substring abc input.txt
+
+input.txt:
+- aBc
+- deF
+- Ghi
+
+assert:
+  output.txt:
+  - deF
+  - Ghi

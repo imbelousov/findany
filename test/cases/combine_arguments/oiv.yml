@@ -1,0 +1,5 @@
+cmd: findany -ooutput -iv substrings input
+substrings: B
+input: [aaa, bbb, ccc]
+assert:
+  output: [aaa, ccc]

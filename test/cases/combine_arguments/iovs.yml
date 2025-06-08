@@ -1,0 +1,4 @@
+cmd: findany -i -ooutput -v -sB input
+input: [aaa, bbb, ccc]
+assert:
+  output: [aaa, ccc]
