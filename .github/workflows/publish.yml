@@ -33,5 +33,5 @@ jobs:
         run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
 
       - name: "[npm] Publish"
-        working-directory: ./publish
+        working-directory: ./publish/npm
         run: npm publish
