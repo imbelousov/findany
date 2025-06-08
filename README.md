@@ -1,6 +1,6 @@
 # findany
 
-[![Build & Test](https://github.com/imbelousov/findany/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/build-and-test.yml)
+[![findany](https://github.com/imbelousov/findany/actions/workflows/findany.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/findany.yml)
 
 A command-line utility that retains only those lines from a text file or standard input that contain at least one substring from a list.
 
