@@ -56,7 +56,7 @@ class Test:
         shutil.rmtree(self.TMP_PATH, ignore_errors=True)
         shutil.copytree(self.BUILD_PATH, self.TMP_PATH)
         if not is_windows():
-            subprocess.run(["chmod", "+x", os.path.join(self.TMP_PATH, "findany")])
+            subprocess.run(["chmod", "+x", os.path.join(self.TMP_PATH, self.PROGRAM_NAME)])
 
     @staticmethod
     def get_cases():
