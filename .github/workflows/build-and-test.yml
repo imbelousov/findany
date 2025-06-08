@@ -22,13 +22,13 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-        name: build-artifact
-        path: ./build
+          name: build-artifact
+          path: ./build
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-        python-version: '3.x'
+          python-version: '3.x'
 
       - name: Install dependencies
         working-directory: ./test
@@ -41,13 +41,13 @@ jobs:
       - name: Upload test report
         uses: actions/upload-artifact@v4
         with:
-        name: test-report
-        path: ./test/report.xml
+          name: test-report
+          path: ./test/report.xml
 
       - name: Publish test report
         uses: dorny/test-reporter@v2
         if: always()
         with:
-        name: test-report-ui
-        path: ./test/report.xml
-        reporter: java-junit
+          name: test-report-ui
+          path: ./test/report.xml
+          reporter: java-junit

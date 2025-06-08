@@ -17,8 +17,8 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-        name: build-artifact
-        path: ./build
+          name: build-artifact
+          path: ./build
 
       - name: Make binary executable
         run: chmod +x ./build/findany
