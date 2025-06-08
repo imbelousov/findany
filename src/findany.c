@@ -704,10 +704,10 @@ int main(int argc, char **argv)
             else
                 substrings_filename = argv[optind];
             break;
-
-        default:
+        case 0:
             if (substrings != NULL)
                 break;
+        default:
             print_usage();
             exit(EXIT_FAILURE);
         }
