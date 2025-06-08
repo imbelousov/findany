@@ -1,0 +1,105 @@
+name: findany
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y build-essential mingw-w64
+
+      - name: Create build dir
+        run: mkdir ./build
+
+      - name: Build Linux
+        run: gcc -msse4.1 -flto -O3 ./src/findany.c -o ./build/findany
+
+      - name: Build Windows
+        run: x86_64-w64-mingw32-gcc -msse4.1 -flto -O3 ./src/findany.c -o ./build/findany
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: ./build
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        working-directory: ./test
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: ./test
+        run: python -m pytest test.py --junitxml=report.xml
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: ./test/report.xml
+
+      - name: Publish test report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: test-report-ui
+          path: ./test/report.xml
+          reporter: java-junit
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./build
+
+      - name: Make binary executable
+        run: chmod +x ./build/findany
+
+      - name: "[npm] Copy binaries"
+        run: |
+          mkdir -p ./publish/npm/bin
+          cp -r ./build/* ./publish/npm/bin/
+
+      - name: "[npm] Set auth token"
+        run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
+
+      - name: "[npm] Publish"
+        working-directory: ./publish/npm
+        run: npm publish
