@@ -97,6 +97,11 @@ jobs:
           mkdir -p ./publish/npm/bin
           cp -r ./build/* ./publish/npm/bin/
 
+      - name: Copy README and LICENSE
+        run: |
+          cp ./README.md ./publish/npm/
+          cp ./LICENSE ./publish/npm/
+
       - name: Set auth token
         run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
 
