@@ -1,6 +1,6 @@
 # findany
 
-[![findany](https://github.com/imbelousov/findany/actions/workflows/findany.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/findany.yml)
+[![findany](https://github.com/imbelousov/findany/actions/workflows/findany.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/findany.yml) [![NPM Version](https://img.shields.io/npm/v/findany)](https://www.npmjs.com/package/findany)
 
 A command-line utility that retains only those lines from a text file or standard input that contain at least one substring from a list.
 
@@ -14,6 +14,20 @@ A command-line utility that retains only those lines from a text file or standar
 - Supports binary files.
 - Progress bar to show search progress when processing large files, if the output is redirected to a file.
 - Runs on Windows and Linux.
+
+## Installation
+
+### Option 1: Use npm
+
+```
+npm i -g findany
+```
+
+### Option 2: Download binary
+
+1. Download the latest release from the [Releases](https://github.com/imbelousov/findany/releases) page.
+2. Save it to any folder (e.g. `/usr/local/bin/` or `C:\Users\<user>\AppData\Local\`), add that folder to the `PATH` variable.
+3. Make executable if needed (`chmod +x /usr/local/bin/findany`).
 
 ## Build
 
