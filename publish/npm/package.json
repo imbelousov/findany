@@ -1,6 +1,7 @@
 {
   "name": "findany",
   "version": "1.1.1",
+  "description": "A command line tool for search multiple substrings in a multiline text file",
   "repository": "github:imbelousov/findany",
   "license": "GPL-3.0-or-later",
   "author": "Igor Belousov <imbelousov66@gmail.com> (https://github.com/imbelousov)",
