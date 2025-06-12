@@ -363,9 +363,18 @@ size_t radix_tree_kw_add(struct string kw)
     return radix_tree.kwmem_length - kw.length;
 }
 
-void radix_tree_add_internal(size_t first_node_idx, struct string str)
+void radix_tree_add(struct string str)
 {
-    size_t node_idx = first_node_idx;
+    if (radix_tree.nodes_length == 0)
+    {
+        radix_tree_node_add();
+        radix_tree.nodes[0].kw_idx = radix_tree_kw_add(str);
+        radix_tree.nodes[0].kw_length = str.length;
+        radix_tree.nodes[0].leaf = true;
+        return;
+    }
+
+    ssize_t node_idx = 0;
     while (true)
     {
         struct radix_tree_node* node = radix_tree.nodes + node_idx;
@@ -390,7 +399,7 @@ void radix_tree_add_internal(size_t first_node_idx, struct string str)
                 struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
                 node->next_node_idx = new_node_idx;
                 new_node->kw_idx = radix_tree_kw_add(str);
-                new_node->kw_length = node_kw.length;
+                new_node->kw_length = str.length;
                 new_node->leaf = true;
                 break;
             }
@@ -421,12 +430,12 @@ void radix_tree_add_internal(size_t first_node_idx, struct string str)
 
             new_node->child_node_idx = node->child_node_idx;
             new_node->leaf = node->leaf;
-            new_node->kw_idx = node->kw_idx + str.length;
-            new_node->kw_length = node->kw_length - str.length;
+            new_node->kw_idx = node->kw_idx + common_sub_length;
+            new_node->kw_length = node->kw_length - common_sub_length;
 
             node->child_node_idx = new_node_idx;
             node->leaf = true;
-            node->kw_length = str.length;
+            node->kw_length = common_sub_length;
 
             break;
         }
@@ -460,19 +469,6 @@ void radix_tree_add_internal(size_t first_node_idx, struct string str)
             }
         }
     }
-}
-
-void radix_tree_add(struct string str)
-{
-    if (radix_tree.nodes_length == 0)
-    {
-        radix_tree_node_add();
-        radix_tree.nodes[0].kw_idx = radix_tree_kw_add(str);
-        radix_tree.nodes[0].kw_length = str.length;
-        radix_tree.nodes[0].leaf = true;
-        return;
-    }
-    radix_tree_add_internal(0, str);
 }
 
 bool radix_tree_find(struct string str)
@@ -525,8 +521,6 @@ void radix_tree_build_from_file(unsigned char* substrings_filename, bool case_in
         if (case_insensitive)
             string_to_lower(substring, &substring);
 
-        unsigned char* str = substring.data;
-        size_t length = substring.length;
         if (substring.data[substring.length - 1] == '\n')
             substring = string_sub(substring, 0, substring.length - 1);
         if (substring.length > 0 && substring.data[substring.length - 1] == '\r')
