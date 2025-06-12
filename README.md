@@ -1,6 +1,8 @@
 # findany
 
-[![findany](https://github.com/imbelousov/findany/actions/workflows/findany.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/findany.yml) [![NPM Version](https://img.shields.io/npm/v/findany)](https://www.npmjs.com/package/findany)
+[![findany](https://github.com/imbelousov/findany/actions/workflows/findany.yml/badge.svg)](https://github.com/imbelousov/findany/actions/workflows/findany.yml)
+[![NPM Version](https://img.shields.io/npm/v/findany)](https://www.npmjs.com/package/findany)
+[![PyPI - Version](https://img.shields.io/pypi/v/findany)](https://pypi.org/project/findany/)
 
 A command-line utility that retains only those lines from a text file or standard input that contain at least one substring from a list.
 
@@ -23,7 +25,15 @@ A command-line utility that retains only those lines from a text file or standar
 npm i -g findany
 ```
 
-### Option 2: Download binary
+### Option 2: Use pip
+
+```
+pip install findany
+```
+
+On Windows, make sure the `/Scripts` directory is added to `PATH`.
+
+### Option 3: Download binary
 
 1. Download the latest release from the [Releases](https://github.com/imbelousov/findany/releases) page.
 2. Save it to any folder (e.g. `/usr/local/bin/` or `C:\Users\<user>\AppData\Local\`), add that folder to the `PATH` variable.
