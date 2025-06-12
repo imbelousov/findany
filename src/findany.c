@@ -71,6 +71,7 @@ void print_help()
 }
 
 #ifdef __SSE4_1__
+
 void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 {
     size_t i = 0;
@@ -98,9 +99,35 @@ void* memchr_sse(void* buf, unsigned char val, size_t max_count)
     }
     return NULL;
 }
+
+int memcmp_sse(void* buf1, void* buf2, size_t size)
+{
+    size_t i = 0;
+    for (; i <= size - 16; i += 16)
+    {
+        __m128i vector_buf1 = _mm_loadu_si128(buf1 + i);
+        __m128i vector_buf2 = _mm_loadu_si128(buf2 + i);
+        __m128i cmp = _mm_cmpeq_epi8(vector_buf1, vector_buf2);
+        int mask = _mm_movemask_epi8(cmp);
+        if (mask != 0xFFFF)
+            return 0;
+    }
+    for (; i < size; i++)
+    {
+        if (((unsigned char*)buf1)[i] != ((unsigned char*)buf2)[i])
+            return 0;
+    }
+    return 1;
+}
+
 #define _memchr(buf, val, max_count) memchr_sse(buf, val, max_count)
+#define _memcmp(buf1, buf2, size) memcmp_sse(buf1, buf2, size)
+
 #else /* __SSE4_1__ */
+
 #define _memchr(buf, val, max_count) memchr(buf, val, max_count)
+#define _memcmp(buf1, buf2, size) memcmp(buf1, buf2, size)
+
 #endif /* __SSE4_1__ */
 
 #define fatal(...) do\
@@ -185,6 +212,24 @@ void string_trim_end(struct string* str, const unsigned char c)
         str->length--;
 }
 
+bool string_starts_with(const struct string str, const struct string substr)
+{
+    if (str.length < substr.length)
+        return false;
+    return _memcmp(str.data, substr.data, substr.length) == 0;
+}
+
+size_t string_greatest_common_sub(const struct string str1, const struct string str2)
+{
+    size_t length = str1.length > str2.length ? str2.length : str1.length;
+    for (size_t i = 0; i < length; i++)
+    {
+        if (str1.data[i] != str2.data[i])
+            return i;
+    }
+    return length;
+}
+
 void string_destroy(struct string* str)
 {
     if (str->data != NULL)
@@ -265,119 +310,210 @@ bool bitmap_get(size_t* bitmap, size_t idx)
     return bitmap[idx_word] & mask;
 }
 
-#define TRIE_DEFAULT_SIZE 64 * 1024
-#define TRIE_NODE_SIZE sizeof(struct trie_node)
+#define RADIX_TREE_INITIAL_NODES_CAPACITY 1024
+#define RADIX_TREE_INITIAL_KWMEM_CAPACITY 65536
 
-struct trie_node
-{
-    /**
-     * Index of the next character in list
-     */
-    ssize_t idx_next;
-
-    /**
-    * Index of the first child node
-    */
-    ssize_t idx_child;
-
-    /**
-     * Bit 0 determines whether trie contains the word formed by this and parent nodes or not.
-     * Bits 1-255 are set only in the first node in linked list and allow to check if the linked
-     * list contains the character or not without full scan.
-     */
-    size_t bitmap[256 / BITMAP_WORD_BITS];
-
-    /**
-     * Stored character or \\0, if node is empty
-     */
-    unsigned char c;
+struct radix_tree_node {
+    size_t kw_idx;
+    size_t kw_length;
+    size_t next_node_idx;
+    size_t child_node_idx;
+    bool leaf;
 };
 
-struct
-{
-    struct trie_node* mem;
-    size_t size;
-    size_t offset;
-} trie;
+struct {
+    struct radix_tree_node* nodes;
+    size_t nodes_capacity;
+    size_t nodes_length;
+    unsigned char* kwmem;
+    size_t kwmem_capacity;
+    size_t kwmem_length;
+} radix_tree;
 
-void trie_expand()
+void radix_tree_init()
 {
-    trie.size *= 2;
-    trie.mem = realloc_or_fatal(trie.mem, trie.size * TRIE_NODE_SIZE);
+    radix_tree.nodes = malloc_or_fatal(sizeof(struct radix_tree_node) * RADIX_TREE_INITIAL_NODES_CAPACITY);
+    radix_tree.nodes_capacity = RADIX_TREE_INITIAL_KWMEM_CAPACITY;
+    radix_tree.nodes_length = 0;
+    radix_tree.kwmem = malloc_or_fatal(RADIX_TREE_INITIAL_KWMEM_CAPACITY);
+    radix_tree.kwmem_capacity = RADIX_TREE_INITIAL_KWMEM_CAPACITY;
+    radix_tree.kwmem_length = 0;
 }
 
-size_t trie_new_node()
+size_t radix_tree_node_add()
 {
-    if (trie.size <= trie.offset)
-        trie_expand();
-    struct trie_node new_node;
-    new_node.idx_next = -1;
-    new_node.idx_child = -1;
-    memset(new_node.bitmap, 0, 32);
-    new_node.c = '\0';
-    trie.mem[trie.offset] = new_node;
-    return trie.offset++;
+    if (radix_tree.nodes_length >= radix_tree.nodes_capacity)
+    {
+        radix_tree.nodes_capacity *= 2;
+        radix_tree.nodes = realloc_or_fatal(radix_tree.nodes, sizeof(struct radix_tree_node) * radix_tree.nodes_capacity);
+    }
+    memset(radix_tree.nodes + radix_tree.nodes_length, 0, sizeof(struct radix_tree_node));
+    return radix_tree.nodes_length++;
 }
 
-void trie_init()
+size_t radix_tree_kw_add(struct string kw)
 {
-    trie.size = TRIE_DEFAULT_SIZE;
-    trie.mem = malloc_or_fatal(trie.size * TRIE_NODE_SIZE);
-    // Root node
-    trie_new_node();
+    if (radix_tree.kwmem_length + kw.length > radix_tree.kwmem_capacity)
+    {
+        radix_tree.kwmem_capacity *= 2;
+        radix_tree.kwmem = realloc_or_fatal(radix_tree.kwmem, radix_tree.kwmem_capacity);
+    }
+    memcpy(radix_tree.kwmem + radix_tree.kwmem_length, kw.data, kw.length);
+    radix_tree.kwmem_length += kw.length;
+    return radix_tree.kwmem_length - kw.length;
 }
 
-void trie_add(ssize_t idx, unsigned char* str, size_t length)
+void radix_tree_add_internal(size_t first_node_idx, struct string str)
 {
+    size_t node_idx = first_node_idx;
     while (true)
     {
-        unsigned char c = *str;
-        ssize_t idx_prev;
+        struct radix_tree_node* node = radix_tree.nodes + node_idx;
+        struct string node_kw = {radix_tree.kwmem + node->kw_idx, node->kw_length};
+        size_t common_sub_length = string_greatest_common_sub(str, node_kw);
 
-        bitmap_set(trie.mem[idx].bitmap, c);
-
-        // Scan linked list inside the node
-        do
+        if (common_sub_length == node_kw.length && common_sub_length == str.length)
         {
-            if (trie.mem[idx].c == '\0' || trie.mem[idx].c == c)
+            // The added string equals the node keyword
+            node->leaf = true;
+            break;
+        }
+        else if (common_sub_length == 0)
+        {
+            // The node keyword and the added string have nothing common, go to the next node in the linked list
+            if (node->next_node_idx > 0)
+                node_idx = node->next_node_idx;
+            // Or add a new node to the linked list, if needed
+            else
             {
-                trie.mem[idx].c = c;
+                size_t new_node_idx = radix_tree_node_add();
+                struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+                node->next_node_idx = new_node_idx;
+                new_node->kw_idx = radix_tree_kw_add(str);
+                new_node->kw_length = node_kw.length;
+                new_node->leaf = true;
                 break;
             }
-            idx_prev = idx;
-            idx = trie.mem[idx].idx_next;
         }
-        while (idx >= 0);
-        
-        if (idx < 0)
+        else if (common_sub_length == node_kw.length)
         {
-            // The symbol is not found in the node. Add to the linked list.
-            idx = trie_new_node();
-            trie.mem[idx_prev].idx_next = idx;
-            trie.mem[idx].c = c;
+            // The node keyword contains a prefix of the added string. Split the string and go to the child node.
+            str = string_sub(str, common_sub_length, str.length - common_sub_length);
+            if (node->child_node_idx > 0)
+                node_idx = node->child_node_idx;
+            // Or add a new node as a child node, if needed
+            else
+            {
+                size_t new_node_idx = radix_tree_node_add();
+                struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+                node->child_node_idx = new_node_idx;
+                new_node->kw_idx = radix_tree_kw_add(str);
+                new_node->kw_length = str.length;
+                new_node->leaf = true;
+                break;
+            }
         }
-        if (length <= 1)
+        else if (common_sub_length == str.length)
         {
-            bitmap_set(trie.mem[idx].bitmap, 0);
-            return;
-        }
-        if (trie.mem[idx].idx_child < 0)
-            trie.mem[idx].idx_child = trie_new_node();
+            // The added string is a prefix of the node keyword. Split the node.
+            size_t new_node_idx = radix_tree_node_add();
+            struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
 
-        // Then go to the child node
-        idx = trie.mem[idx].idx_child;
-        str++;
-        length--;
+            new_node->child_node_idx = node->child_node_idx;
+            new_node->leaf = node->leaf;
+            new_node->kw_idx = node->kw_idx + str.length;
+            new_node->kw_length = node->kw_length - str.length;
+
+            node->child_node_idx = new_node_idx;
+            node->leaf = true;
+            node->kw_length = str.length;
+
+            break;
+        }
+        else
+        {
+            // The added string and the node keyword have the same prefix, but different postfix. Split both the node and the string.
+            size_t new_node_idx = radix_tree_node_add();
+            struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+
+            new_node->child_node_idx = node->child_node_idx;
+            new_node->leaf = node->leaf;
+            new_node->kw_idx = node->kw_idx + common_sub_length;
+            new_node->kw_length = node_kw.length - common_sub_length;
+
+            node->child_node_idx = new_node_idx;
+            node->leaf = false;
+            node->kw_length = common_sub_length;
+
+            str = string_sub(str, common_sub_length, str.length - common_sub_length);
+            if (node->next_node_idx > 0)
+                node_idx = node->next_node_idx;
+            else
+            {
+                new_node_idx = radix_tree_node_add();
+                new_node = radix_tree.nodes + new_node_idx;
+                node->next_node_idx = new_node_idx;
+                new_node->kw_idx = radix_tree_kw_add(str);
+                new_node->kw_length = str.length;
+                new_node->leaf = true;
+                break;
+            }
+        }
     }
 }
 
-void trie_build_from_file(unsigned char* substrings_filename, bool case_insensitive)
+void radix_tree_add(struct string str)
+{
+    if (radix_tree.nodes_length == 0)
+    {
+        radix_tree_node_add();
+        radix_tree.nodes[0].kw_idx = radix_tree_kw_add(str);
+        radix_tree.nodes[0].kw_length = str.length;
+        radix_tree.nodes[0].leaf = true;
+        return;
+    }
+    radix_tree_add_internal(0, str);
+}
+
+bool radix_tree_find(struct string str)
+{
+    if (radix_tree.nodes_length == 0)
+        return false;
+
+    ssize_t idx = 0;
+    do
+    {
+        struct radix_tree_node* node = radix_tree.nodes + idx;
+        struct string node_kw = {radix_tree.kwmem + node->kw_idx, node->kw_length};
+
+        if (node->kw_length > str.length)
+        {
+            if (string_starts_with(node_kw, str))
+                return false;
+            else
+                idx = node->next_node_idx;
+        }
+        else if (string_starts_with(str, node_kw))
+        {
+            if (node->leaf)
+                return true;
+            str = string_sub(str, node_kw.length, str.length - node_kw.length);
+            idx = node->child_node_idx;
+        }
+        else
+            idx = node->next_node_idx;
+    } while(idx > 0 && str.length > 0);
+
+    return false;
+}
+
+void radix_tree_build_from_file(unsigned char* substrings_filename, bool case_insensitive)
 {
     int file = open(substrings_filename, O_RDONLY | O_BINARY);
     if (file < 0)
         fatal("No access to file %s", substrings_filename);
 
-    trie_init();
+    radix_tree_init();
 
     struct fstream stream = fstream_init(file);
     struct string buffer = string_init();
@@ -391,22 +527,20 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
 
         unsigned char* str = substring.data;
         size_t length = substring.length;
-        if (str[length - 1] == '\n')
-            str[--length] = '\0';
-        if (length > 0 && str[length - 1] == '\r')
-            str[--length] = '\0';
+        if (substring.data[substring.length - 1] == '\n')
+            substring = string_sub(substring, 0, substring.length - 1);
+        if (substring.length > 0 && substring.data[substring.length - 1] == '\r')
+            substring = string_sub(substring, 0, substring.length - 1);
+        if (substring.length == 0)
+            break;
 
-        trie_add(0, str, length);
+        radix_tree_add(substring);
     }
-
-    close(file);
-    string_destroy(&buffer);
-    fstream_destroy(&stream);
 }
 
-void trie_build_from_args(struct string* substrings, size_t substrings_count, bool case_insensitive)
+void radix_tree_build_from_args(struct string* substrings, size_t substrings_count, bool case_insensitive)
 {
-    trie_init();
+    radix_tree_init();
 
     for (size_t i = 0; i < substrings_count; i++)
     {
@@ -416,48 +550,17 @@ void trie_build_from_args(struct string* substrings, size_t substrings_count, bo
         if (case_insensitive)
             string_to_lower(substring, &substring);
 
-        trie_add(0, substring.data, substring.length);
+        radix_tree_add(substring);
     }
 }
 
-bool trie_find(ssize_t idx, struct string str)
-{
-    while (true)
-    {
-        unsigned char c = *(str.data);
-
-        if (!bitmap_get(trie.mem[idx].bitmap, c))
-            return false;
-
-        // Scan linked list inside the node
-        do
-        {
-            if (trie.mem[idx].c == c)
-                break;
-            idx = trie.mem[idx].idx_next;
-        }
-        while (idx >= 0);
-        if (idx < 0)
-            return false;
-        if (bitmap_get(trie.mem[idx].bitmap, 0))
-            return true;
-        if (str.length <= 1)
-            return false;
-
-        // Then go to the child node
-        idx = trie.mem[idx].idx_child;
-
-        str = string_sub(str, 1, str.length - 1);
-    }
-}
-
-bool trie_find_anywhere(struct string str)
+bool radix_tree_find_anywhere(struct string str)
 {
     string_trim_end(&str, '\n');
     string_trim_end(&str, '\r');
     for (size_t i = 0; i < str.length; i++)
     {
-        if (trie_find(0, string_sub(str, i, str.length - i)))
+        if (radix_tree_find(string_sub(str, i, str.length - i)))
             return true;
     }
     return false;
@@ -550,7 +653,7 @@ void print_progress(size_t processed, size_t size, bool force)
 
 void handle_line(struct string line_for_search, struct string line_original, size_t input_size, int output_file, unsigned char* output_filename, bool invert, size_t* progress)
 {
-    if (trie_find_anywhere(line_for_search) ^ invert)
+    if (radix_tree_find_anywhere(line_for_search) ^ invert)
     {
         if (write(output_file, line_original.data, line_original.length) < 0)
             fatal("Failed to write");
@@ -563,9 +666,9 @@ void handle_line(struct string line_for_search, struct string line_original, siz
 void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
 {
     if (substrings_filename != NULL)
-        trie_build_from_file(substrings_filename, case_insensitive);
+        radix_tree_build_from_file(substrings_filename, case_insensitive);
     else
-        trie_build_from_args(substrings, substrings_count, case_insensitive);
+        radix_tree_build_from_args(substrings, substrings_count, case_insensitive);
 
     // Initialize input
     int input_file = STDIN_FILENO;
