@@ -1,5 +1,5 @@
 [project]
-name = "findany-beta"
+name = "findany"
 version = "1.1.2"
 authors = [
   {name="Igor Belousov", email="imbelousov66@gmail.com"}
@@ -8,27 +8,24 @@ description = "A command line tool for searching multiple substrings in a multil
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
+  "Programming Language :: Python :: 3",
   "Programming Language :: C",
-  "Operating System :: OS Independent",
+  "Operating System :: OS Independent"
 ]
-license = "GPL-3.0-or-later"
-license-files = ["LICENSE"]
-urls = { 
-  Homepage = "https://github.com/imbelousov/findany",
-  Repository = "https://github.com/imbelousov/findany",
-  Issues = "https://github.com/imbelousov/findany/issues"
-}
-scripts = {
-  findany = "findany.cli:main"
-}
 
-[tool]
-setuptools = {
-  include-package-data = true,
-  package-data = {
-    findany = ["bin/*"]
-  }
-}
+[project.urls]
+Homepage = "https://github.com/imbelousov/findany"
+Repository = "https://github.com/imbelousov/findany"
+Issues = "https://github.com/imbelousov/findany/issues"
+
+[project.scripts]
+findany = "findany.findany_wrapper:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+findany = ["bin/findany", "bin/findany.exe"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
