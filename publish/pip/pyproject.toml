@@ -1,0 +1,32 @@
+[project]
+name = "findany"
+version = "1.1.2"
+authors = [
+  {name="Igor Belousov", email="imbelousov66@gmail.com"}
+]
+description = "A command line tool for searching multiple substrings in a multiline text file"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C",
+  "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/imbelousov/findany"
+Repository = "https://github.com/imbelousov/findany"
+Issues = "https://github.com/imbelousov/findany/issues"
+
+[project.scripts]
+findany = "findany.findany_wrapper:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+findany = ["bin/findany", "bin/findany.exe"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

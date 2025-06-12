@@ -77,7 +77,7 @@ jobs:
   publish-npm:
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'workflow_dispatch'
+    if: false
 
     steps:
       - name: Checkout
@@ -108,3 +108,52 @@ jobs:
       - name: Publish
         working-directory: ./publish/npm
         run: npm publish
+
+  publish-pip:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./build
+
+      - name: Make binary executable
+        run: chmod +x ./build/findany
+
+      - name: Copy binaries
+        run: |
+          mkdir -p ./publish/pip/findany/bin
+          cp -r ./build/* ./publish/pip/findany/bin/
+
+      - name: Copy README
+        run: cp ./README.md ./publish/pip/
+
+      - name: Install dependencies
+        working-directory: ./publish/pip
+        run: python -m pip install --upgrade setuptools wheel twine pkginfo build
+
+      - name: Build package
+        working-directory: ./publish/pip
+        run: python -m build
+
+      - name: List files
+        working-directory: ./publish/pip
+        run: find . -type f
+
+      - name: Check
+        working-directory: ./publish/pip
+        run: twine check dist/*
+
+      - name: Publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PIP_TOKEN }}
+        working-directory: ./publish/pip
+        run: twine upload dist/*
