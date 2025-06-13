@@ -370,6 +370,38 @@ void trie_add(struct string str)
     }
 }
 
+bool trie_find(struct string str)
+{
+    size_t idx = 0;
+    while (true)
+    {
+        unsigned char c = str.data[0];
+
+        if (!bitmap_get(trie.nodes[idx].bitmap, c))
+            return false;
+
+        // Scan linked list inside the node
+        do
+        {
+            if (trie.nodes[idx].c == c)
+                break;
+            idx = trie.nodes[idx].idx_next;
+        }
+        while (idx != TRIE_NULL_IDX);
+        if (idx == TRIE_NULL_IDX)
+            return false;
+        if (bitmap_get(trie.nodes[idx].bitmap, 0))
+            return true;
+        if (str.length <= 1)
+            return false;
+
+        // Then go to the child node
+        idx = trie.nodes[idx].idx_child;
+
+        str = string_sub(str, 1, str.length - 1);
+    }
+}
+
 void trie_build_from_file(unsigned char* substrings_filename, bool case_insensitive)
 {
     int file = open(substrings_filename, O_RDONLY | O_BINARY);
@@ -412,38 +444,6 @@ void trie_build_from_args(struct string* substrings, size_t substrings_count, bo
             string_to_lower(substring, &substring);
 
         trie_add(substring);
-    }
-}
-
-bool trie_find(struct string str)
-{
-    size_t idx = 0;
-    while (true)
-    {
-        unsigned char c = str.data[0];
-
-        if (!bitmap_get(trie.nodes[idx].bitmap, c))
-            return false;
-
-        // Scan linked list inside the node
-        do
-        {
-            if (trie.nodes[idx].c == c)
-                break;
-            idx = trie.nodes[idx].idx_next;
-        }
-        while (idx != TRIE_NULL_IDX);
-        if (idx == TRIE_NULL_IDX)
-            return false;
-        if (bitmap_get(trie.nodes[idx].bitmap, 0))
-            return true;
-        if (str.length <= 1)
-            return false;
-
-        // Then go to the child node
-        idx = trie.nodes[idx].idx_child;
-
-        str = string_sub(str, 1, str.length - 1);
     }
 }
 
