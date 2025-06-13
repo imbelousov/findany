@@ -267,6 +267,22 @@ void fstream_destroy(struct fstream* stream)
     stream->buffer = NULL;
 }
 
+#define BITMAP_WORD_BITS (sizeof(size_t) * 8)
+
+void bitmap_set(size_t* bitmap, size_t idx)
+{
+    size_t idx_word = idx / BITMAP_WORD_BITS;
+    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
+    bitmap[idx_word] |= mask;
+}
+
+bool bitmap_get(size_t* bitmap, size_t idx)
+{
+    size_t idx_word = idx / BITMAP_WORD_BITS;
+    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
+    return bitmap[idx_word] & mask;
+}
+
 #define RADIX_TREE_INITIAL_NODES_CAPACITY 1024
 #define RADIX_TREE_INITIAL_KWMEM_CAPACITY 65536
 
@@ -275,6 +291,7 @@ struct radix_tree_node {
     size_t kw_length;
     size_t next_node_idx;
     size_t child_node_idx;
+    size_t filter[256 / BITMAP_WORD_BITS];
     bool leaf;
 };
 
@@ -344,10 +361,12 @@ void radix_tree_add(struct string str)
         root->kw_idx = radix_tree_kw_add(str);
         root->kw_length = str.length;
         root->leaf = true;
+        bitmap_set(root->filter, str.data[0]);
         return;
     }
 
     size_t node_idx = 0;
+    size_t linked_list_root_node_idx = 0;
     while (true)
     {
         struct radix_tree_node* node = radix_tree_get_node(node_idx);
@@ -375,6 +394,7 @@ void radix_tree_add(struct string str)
                 new_node->kw_idx = radix_tree_kw_add(str);
                 new_node->kw_length = str.length;
                 new_node->leaf = true;
+                bitmap_set(radix_tree_get_node(linked_list_root_node_idx)->filter, str.data[0]);
                 break;
             }
         }
@@ -386,17 +406,21 @@ void radix_tree_add(struct string str)
                 break;
             str = string_sub(str, common_sub_length, str.length - common_sub_length);
             if (node->child_node_idx > 0)
-                node_idx = node->child_node_idx;
+                node_idx = linked_list_root_node_idx = node->child_node_idx;
             // Or add a new node as a child node, if needed
             else
             {
                 size_t new_node_idx = radix_tree_node_add();
                 node = radix_tree_get_node(node_idx);
                 struct radix_tree_node* new_node = radix_tree_get_node(new_node_idx);
+
                 node->child_node_idx = new_node_idx;
+
                 new_node->kw_idx = radix_tree_kw_add(str);
                 new_node->kw_length = str.length;
                 new_node->leaf = true;
+                bitmap_set(new_node->filter, str.data[0]);
+
                 break;
             }
         }
@@ -411,6 +435,7 @@ void radix_tree_add(struct string str)
             new_node->leaf = node->leaf;
             new_node->kw_idx = node->kw_idx + common_sub_length;
             new_node->kw_length = node->kw_length - common_sub_length;
+            bitmap_set(new_node->filter, radix_tree.kwmem[new_node->kw_idx]);
 
             node->child_node_idx = new_node_idx;
             node->leaf = true;
@@ -429,6 +454,7 @@ void radix_tree_add(struct string str)
             new_node->leaf = node->leaf;
             new_node->kw_idx = node->kw_idx + common_sub_length;
             new_node->kw_length = node_kw.length - common_sub_length;
+            bitmap_set(new_node->filter, radix_tree.kwmem[new_node->kw_idx]);
 
             node->child_node_idx = new_node_idx;
             node->leaf = false;
@@ -447,6 +473,7 @@ void radix_tree_add(struct string str)
             new_node->leaf = true;
 
             node->next_node_idx = new_node_idx;
+            bitmap_set(node->filter, str.data[0]);
 
             break;
         }
@@ -455,13 +482,18 @@ void radix_tree_add(struct string str)
 
 bool radix_tree_find(struct string str)
 {
-    if (radix_tree.nodes_length == 0)
+    if (radix_tree.nodes_length == 0 || str.length == 0)
         return false;
 
-    size_t idx = 0;
+    size_t node_idx = 0;
+    bool is_linked_list_root = true;
     do
     {
-        struct radix_tree_node node = radix_tree.nodes[idx];
+        struct radix_tree_node node = radix_tree.nodes[node_idx];
+
+        if (is_linked_list_root && !bitmap_get(node.filter, str.data[0]))
+            return false;
+
         struct string node_kw = {radix_tree.kwmem + node.kw_idx, node.kw_length};
 
         if (node.kw_length > str.length)
@@ -469,18 +501,25 @@ bool radix_tree_find(struct string str)
             if (string_starts_with(node_kw, str))
                 return false;
             else
-                idx = node.next_node_idx;
+            {
+                node_idx = node.next_node_idx;
+                is_linked_list_root = false;
+            }
         }
         else if (string_starts_with(str, node_kw))
         {
             if (node.leaf)
                 return true;
             str = string_sub(str, node_kw.length, str.length - node_kw.length);
-            idx = node.child_node_idx;
+            node_idx = node.child_node_idx;
+            is_linked_list_root = true;
         }
         else
-            idx = node.next_node_idx;
-    } while(idx > 0 && str.length > 0);
+        {
+            node_idx = node.next_node_idx;
+            is_linked_list_root = false;
+        }
+    } while(node_idx > 0 && str.length > 0);
 
     return false;
 }
