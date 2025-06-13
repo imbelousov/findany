@@ -323,8 +323,9 @@ void trie_init()
     trie_new_node();
 }
 
-void trie_add(size_t idx, struct string str)
+void trie_add(struct string str)
 {
+    size_t idx = 0;
     while (true)
     {
         unsigned char c = str.data[0];
@@ -390,7 +391,7 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
         string_trim_end(&substring, '\n');
         string_trim_end(&substring, '\r');
 
-        trie_add(0, substring);
+        trie_add(substring);
     }
 
     close(file);
@@ -410,12 +411,13 @@ void trie_build_from_args(struct string* substrings, size_t substrings_count, bo
         if (case_insensitive)
             string_to_lower(substring, &substring);
 
-        trie_add(0, substring);
+        trie_add(substring);
     }
 }
 
-bool trie_find(size_t idx, struct string str)
+bool trie_find(struct string str)
 {
+    size_t idx = 0;
     while (true)
     {
         unsigned char c = str.data[0];
@@ -449,10 +451,12 @@ bool trie_find_anywhere(struct string str)
 {
     string_trim_end(&str, '\n');
     string_trim_end(&str, '\r');
-    for (size_t i = 0; i < str.length; i++)
+    while (str.length > 0)
     {
-        if (trie_find(0, string_sub(str, i, str.length - i)))
+        bool found = trie_find(str);
+        if (found)
             return true;
+        str = string_sub(str, 1, str.length - 1);
     }
     return false;
 }
