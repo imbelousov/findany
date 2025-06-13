@@ -476,6 +476,8 @@ void radix_tree_add(struct string str)
                 node_idx = node->next_node_idx;
             else
             {
+                // Add the second child node to the linked list. As result, both new nodes are children of the original one.
+                node_idx = new_node_idx;
                 new_node_idx = radix_tree_node_add();
                 node = radix_tree_get_node(node_idx);
                 new_node = radix_tree_get_node(new_node_idx);
