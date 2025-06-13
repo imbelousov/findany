@@ -333,7 +333,7 @@ struct {
 void radix_tree_init()
 {
     radix_tree.nodes = malloc_or_fatal(sizeof(struct radix_tree_node) * RADIX_TREE_INITIAL_NODES_CAPACITY);
-    radix_tree.nodes_capacity = RADIX_TREE_INITIAL_KWMEM_CAPACITY;
+    radix_tree.nodes_capacity = RADIX_TREE_INITIAL_NODES_CAPACITY;
     radix_tree.nodes_length = 0;
     radix_tree.kwmem = malloc_or_fatal(RADIX_TREE_INITIAL_KWMEM_CAPACITY);
     radix_tree.kwmem_capacity = RADIX_TREE_INITIAL_KWMEM_CAPACITY;
@@ -349,6 +349,18 @@ size_t radix_tree_node_add()
     }
     memset(radix_tree.nodes + radix_tree.nodes_length, 0, sizeof(struct radix_tree_node));
     return radix_tree.nodes_length++;
+}
+
+struct radix_tree_node* radix_tree_get_node(size_t node_idx)
+{
+    return &radix_tree.nodes[node_idx];
+}
+
+struct string radix_tree_get_node_kw(size_t node_idx)
+{
+    struct radix_tree_node* node = radix_tree_get_node(node_idx);
+    struct string str = {radix_tree.kwmem + node->kw_idx, node->kw_length};
+    return str;
 }
 
 size_t radix_tree_kw_add(struct string kw)
@@ -368,23 +380,24 @@ void radix_tree_add(struct string str)
     if (radix_tree.nodes_length == 0)
     {
         radix_tree_node_add();
-        radix_tree.nodes[0].kw_idx = radix_tree_kw_add(str);
-        radix_tree.nodes[0].kw_length = str.length;
-        radix_tree.nodes[0].leaf = true;
+        struct radix_tree_node* root = radix_tree_get_node(0);
+        root->kw_idx = radix_tree_kw_add(str);
+        root->kw_length = str.length;
+        root->leaf = true;
         return;
     }
 
-    ssize_t node_idx = 0;
+    size_t node_idx = 0;
     while (true)
     {
-        struct radix_tree_node* node = radix_tree.nodes + node_idx;
-        struct string node_kw = {radix_tree.kwmem + node->kw_idx, node->kw_length};
+        struct radix_tree_node* node = radix_tree_get_node(node_idx);
+        struct string node_kw = radix_tree_get_node_kw(node_idx);
         size_t common_sub_length = string_greatest_common_sub(str, node_kw);
 
         if (common_sub_length == node_kw.length && common_sub_length == str.length)
         {
             // The added string equals the node keyword
-            node->leaf = true;
+            radix_tree_get_node(node_idx)->leaf = true;
             break;
         }
         else if (common_sub_length == 0)
@@ -396,7 +409,8 @@ void radix_tree_add(struct string str)
             else
             {
                 size_t new_node_idx = radix_tree_node_add();
-                struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+                node = radix_tree_get_node(node_idx);
+                struct radix_tree_node* new_node = radix_tree_get_node(new_node_idx);
                 node->next_node_idx = new_node_idx;
                 new_node->kw_idx = radix_tree_kw_add(str);
                 new_node->kw_length = str.length;
@@ -414,7 +428,8 @@ void radix_tree_add(struct string str)
             else
             {
                 size_t new_node_idx = radix_tree_node_add();
-                struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+                node = radix_tree_get_node(node_idx);
+                struct radix_tree_node* new_node = radix_tree_get_node(new_node_idx);
                 node->child_node_idx = new_node_idx;
                 new_node->kw_idx = radix_tree_kw_add(str);
                 new_node->kw_length = str.length;
@@ -426,7 +441,8 @@ void radix_tree_add(struct string str)
         {
             // The added string is a prefix of the node keyword. Split the node.
             size_t new_node_idx = radix_tree_node_add();
-            struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+            node = radix_tree_get_node(node_idx);
+            struct radix_tree_node* new_node = radix_tree_get_node(new_node_idx);
 
             new_node->child_node_idx = node->child_node_idx;
             new_node->leaf = node->leaf;
@@ -443,7 +459,8 @@ void radix_tree_add(struct string str)
         {
             // The added string and the node keyword have the same prefix, but different postfix. Split both the node and the string.
             size_t new_node_idx = radix_tree_node_add();
-            struct radix_tree_node* new_node = radix_tree.nodes + new_node_idx;
+            node = radix_tree_get_node(node_idx);
+            struct radix_tree_node* new_node = radix_tree_get_node(new_node_idx);
 
             new_node->child_node_idx = node->child_node_idx;
             new_node->leaf = node->leaf;
@@ -460,7 +477,8 @@ void radix_tree_add(struct string str)
             else
             {
                 new_node_idx = radix_tree_node_add();
-                new_node = radix_tree.nodes + new_node_idx;
+                node = radix_tree_get_node(node_idx);
+                new_node = radix_tree_get_node(new_node_idx);
                 node->next_node_idx = new_node_idx;
                 new_node->kw_idx = radix_tree_kw_add(str);
                 new_node->kw_length = str.length;
@@ -476,28 +494,28 @@ bool radix_tree_find(struct string str)
     if (radix_tree.nodes_length == 0)
         return false;
 
-    ssize_t idx = 0;
+    size_t idx = 0;
     do
     {
-        struct radix_tree_node* node = radix_tree.nodes + idx;
-        struct string node_kw = {radix_tree.kwmem + node->kw_idx, node->kw_length};
+        struct radix_tree_node node = radix_tree.nodes[idx];
+        struct string node_kw = {radix_tree.kwmem + node.kw_idx, node.kw_length};
 
-        if (node->kw_length > str.length)
+        if (node.kw_length > str.length)
         {
             if (string_starts_with(node_kw, str))
                 return false;
             else
-                idx = node->next_node_idx;
+                idx = node.next_node_idx;
         }
         else if (string_starts_with(str, node_kw))
         {
-            if (node->leaf)
+            if (node.leaf)
                 return true;
             str = string_sub(str, node_kw.length, str.length - node_kw.length);
-            idx = node->child_node_idx;
+            idx = node.child_node_idx;
         }
         else
-            idx = node->next_node_idx;
+            idx = node.next_node_idx;
     } while(idx > 0 && str.length > 0);
 
     return false;
