@@ -277,14 +277,13 @@ struct trie_node
     size_t idx_next;
 
     /**
-    * Index of the first child node
-    */
+     * Index of the first child node
+     */
     size_t idx_child;
 
     /**
-     * Bit 0 determines whether trie contains the word formed by this and parent nodes or not.
-     * Bits 1-255 are set only in the first node in linked list and allow to check if the linked
-     * list contains the character or not without full scan.
+     * The bitmap acts as a fast-check filter to determine if a character may be present in the linked list.
+     * This is used only in the root of linked list.
      */
     size_t bitmap[256 / BITMAP_WORD_BITS];
 
@@ -292,7 +291,12 @@ struct trie_node
      * Stored character or \\0, if node is empty
      */
     unsigned char c;
-};
+
+    /*
+     * If set, stored character is the last symbol in the keyword
+     */
+    bool leaf;
+} __attribute__((aligned(64)));
 
 struct
 {
@@ -355,7 +359,7 @@ void trie_add(struct string str)
         }
         if (str.length <= 1)
         {
-            bitmap_set(trie.nodes[idx].bitmap, 0);
+            trie.nodes[idx].leaf = true;
             return;
         }
         if (trie.nodes[idx].idx_child == TRIE_NULL_IDX)
@@ -390,7 +394,7 @@ bool trie_find(struct string str)
         while (idx != TRIE_NULL_IDX);
         if (idx == TRIE_NULL_IDX)
             return false;
-        if (bitmap_get(trie.nodes[idx].bitmap, 0))
+        if (trie.nodes[idx].leaf)
             return true;
         if (str.length <= 1)
             return false;
