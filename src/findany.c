@@ -71,7 +71,6 @@ void print_help()
 }
 
 #ifdef __SSE4_1__
-
 void* memchr_sse(void* buf, unsigned char val, size_t max_count)
 {
     size_t i = 0;
@@ -99,35 +98,9 @@ void* memchr_sse(void* buf, unsigned char val, size_t max_count)
     }
     return NULL;
 }
-
-int memcmp_sse(void* buf1, void* buf2, size_t size)
-{
-    size_t i = 0;
-    for (; i <= size - 16; i += 16)
-    {
-        __m128i vector_buf1 = _mm_loadu_si128(buf1 + i);
-        __m128i vector_buf2 = _mm_loadu_si128(buf2 + i);
-        __m128i cmp = _mm_cmpeq_epi8(vector_buf1, vector_buf2);
-        int mask = _mm_movemask_epi8(cmp);
-        if (mask != 0xFFFF)
-            return 0;
-    }
-    for (; i < size; i++)
-    {
-        if (((unsigned char*)buf1)[i] != ((unsigned char*)buf2)[i])
-            return 0;
-    }
-    return 1;
-}
-
 #define _memchr(buf, val, max_count) memchr_sse(buf, val, max_count)
-#define _memcmp(buf1, buf2, size) memcmp_sse(buf1, buf2, size)
-
 #else /* __SSE4_1__ */
-
 #define _memchr(buf, val, max_count) memchr(buf, val, max_count)
-#define _memcmp(buf1, buf2, size) memcmp(buf1, buf2, size)
-
 #endif /* __SSE4_1__ */
 
 #define fatal(...) do\
@@ -216,7 +189,7 @@ bool string_starts_with(const struct string str, const struct string substr)
 {
     if (str.length < substr.length)
         return false;
-    return _memcmp(str.data, substr.data, substr.length) == 0;
+    return memcmp(str.data, substr.data, substr.length) == 0;
 }
 
 size_t string_greatest_common_sub(const struct string str1, const struct string str2)
@@ -377,6 +350,9 @@ size_t radix_tree_kw_add(struct string kw)
 
 void radix_tree_add(struct string str)
 {
+    if (str.length <= 0)
+        return;
+
     if (radix_tree.nodes_length == 0)
     {
         radix_tree_node_add();
@@ -421,6 +397,9 @@ void radix_tree_add(struct string str)
         else if (common_sub_length == node_kw.length)
         {
             // The node keyword contains a prefix of the added string. Split the string and go to the child node.
+            if (node->leaf)
+                // Or do nothing, if the keyword is a leaf. There is no reason to store a complete keyword in this case.
+                break;
             str = string_sub(str, common_sub_length, str.length - common_sub_length);
             if (node->child_node_idx > 0)
                 node_idx = node->child_node_idx;
@@ -546,7 +525,7 @@ void radix_tree_build_from_file(unsigned char* substrings_filename, bool case_in
         if (substring.length > 0 && substring.data[substring.length - 1] == '\r')
             substring = string_sub(substring, 0, substring.length - 1);
         if (substring.length == 0)
-            break;
+            continue;
 
         radix_tree_add(substring);
     }
