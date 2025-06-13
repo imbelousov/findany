@@ -267,22 +267,6 @@ void fstream_destroy(struct fstream* stream)
     stream->buffer = NULL;
 }
 
-#define BITMAP_WORD_BITS (sizeof(size_t) * 8)
-
-void bitmap_set(size_t* bitmap, size_t idx)
-{
-    size_t idx_word = idx / BITMAP_WORD_BITS;
-    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
-    bitmap[idx_word] |= mask;
-}
-
-bool bitmap_get(size_t* bitmap, size_t idx)
-{
-    size_t idx_word = idx / BITMAP_WORD_BITS;
-    size_t mask = 1 << (idx % BITMAP_WORD_BITS);
-    return bitmap[idx_word] & mask;
-}
-
 #define RADIX_TREE_INITIAL_NODES_CAPACITY 1024
 #define RADIX_TREE_INITIAL_KWMEM_CAPACITY 65536
 
