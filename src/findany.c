@@ -332,6 +332,32 @@ void trie_init()
     trie_new_node();
 }
 
+size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
+{
+    size_t idx = idx_first;
+    while (idx != TRIE_NULL_IDX)
+    {
+        if (trie.nodes[idx].c == c || trie.nodes[idx].idx_next == TRIE_NULL_IDX)
+            return idx;
+        idx = trie.nodes[idx].idx_next;
+    }
+    return idx_first;
+}
+
+size_t trie_linked_list_add(size_t idx)
+{
+    size_t idx_new = trie_new_node();
+    trie.nodes[idx].idx_next = idx_new;
+    return idx_new;
+}
+
+size_t trie_child_add(size_t idx)
+{
+    size_t idx_new = trie_new_node();
+    trie.nodes[idx].idx_child = idx_new;
+    return idx_new;
+}
+
 void trie_add(struct string str)
 {
     size_t idx = 0;
@@ -343,35 +369,24 @@ void trie_add(struct string str)
         bitmap_set(trie.nodes[idx].bitmap, c);
 
         // Scan linked list inside the node
-        do
-        {
-            if (trie.nodes[idx].c == '\0' || trie.nodes[idx].c == c)
-            {
+        idx = trie_linked_list_scan(idx, c);
+        if (trie.nodes[idx].c == '\0')
+            // The linked list is empty (contains only an empty node)
                 trie.nodes[idx].c = c;
-                break;
-            }
-            idx_prev = idx;
-            idx = trie.nodes[idx].idx_next;
-        }
-        while (idx != TRIE_NULL_IDX);
-        
-        if (idx == TRIE_NULL_IDX)
+        else if (trie.nodes[idx].c != c)
         {
             // The symbol is not found in the node. Add to the linked list.
-            idx = trie_new_node();
-            trie.nodes[idx_prev].idx_next = idx;
+            idx = trie_linked_list_add(idx);
             trie.nodes[idx].c = c;
         }
+
         if (str.length <= 1)
         {
             trie.nodes[idx].leaf = true;
             return;
         }
         if (trie.nodes[idx].idx_child == TRIE_NULL_IDX)
-        {
-            size_t idx_new = trie_new_node();
-            trie.nodes[idx].idx_child = idx_new;
-        }
+            trie_child_add(idx);
 
         // Then go to the child node
         idx = trie.nodes[idx].idx_child;
@@ -390,22 +405,17 @@ bool trie_find(struct string str)
             return false;
 
         // Scan linked list inside the node
-        do
-        {
-            if (trie.nodes[idx].c == c)
-                break;
-            idx = trie.nodes[idx].idx_next;
-        }
-        while (idx != TRIE_NULL_IDX);
-        if (idx == TRIE_NULL_IDX)
+        idx = trie_linked_list_scan(idx, c);
+        struct trie_node node = trie.nodes[idx];
+        if (node.c != c)
             return false;
-        if (trie.nodes[idx].leaf)
+        if (node.leaf)
             return true;
         if (str.length <= 1)
             return false;
 
         // Then go to the child node
-        idx = trie.nodes[idx].idx_child;
+        idx = node.idx_child;
 
         str = string_sub(str, 1, str.length - 1);
     }
