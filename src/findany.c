@@ -523,10 +523,15 @@ void print_ws(size_t length)
     printf("%s", buffer);
 }
 
+#define PRINT_PROGRESS_MIN_DIFF_BYTES 1024 * 1024
+
 void print_progress(size_t processed, size_t size, bool force)
 {
     static clock_t prevtime = 0;
+    static size_t prevprocessed = 0;
     static size_t prevlength = 0;
+    if (processed - prevprocessed < PRINT_PROGRESS_MIN_DIFF_BYTES && !force)
+        return;
     clock_t time = clock();
     if (prevtime == 0)
     {
@@ -545,8 +550,8 @@ void print_progress(size_t processed, size_t size, bool force)
         if (prevlength > length)
             print_ws(prevlength - length);
         prevtime = time;
+        prevprocessed = processed;
         prevlength = length;
-        prevtime = time;
     }
 }
 
