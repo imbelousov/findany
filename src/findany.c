@@ -156,6 +156,10 @@ void string_expand(struct string* str, size_t min_length)
 
 struct string string_sub(const struct string str, size_t offset, size_t length)
 {
+    if (offset > str.length)
+        offset = str.length;
+    if (length > str.length - offset)
+        length = str.length - offset;
     struct string substring;
     substring.data = str.data + offset;
     substring.length = length;
@@ -192,7 +196,7 @@ void string_destroy(struct string* str)
     str->data = NULL;
 }
 
-#define FSTREAM_BUFFER_DEFAULT_CAPACITY 4 * 1024 * 1024
+#define FSTREAM_BUFFER_INITIAL_CAPACITY 4 * 1024 * 1024
 
 struct fstream
 {
@@ -206,7 +210,7 @@ struct fstream
 struct fstream fstream_init(int file)
 {
     struct fstream stream;
-    stream.buffer_capacity = FSTREAM_BUFFER_DEFAULT_CAPACITY;
+    stream.buffer_capacity = FSTREAM_BUFFER_INITIAL_CAPACITY;
     stream.buffer = malloc_or_fatal(stream.buffer_capacity);
     stream.buffer_size = 0;
     stream.buffer_offset = 0;
@@ -265,25 +269,25 @@ bool bitmap_get(size_t* bitmap, size_t idx)
     return bitmap[idx_word] & mask;
 }
 
-#define TRIE_DEFAULT_SIZE 64 * 1024
+#define TRIE_INITIAL_CAPACITY 64 * 1024
 #define TRIE_NODE_SIZE sizeof(struct trie_node)
+#define TRIE_NULL_IDX SIZE_MAX
 
 struct trie_node
 {
     /**
      * Index of the next character in list
      */
-    ssize_t idx_next;
+    size_t idx_next;
 
     /**
-    * Index of the first child node
-    */
-    ssize_t idx_child;
+     * Index of the first child node
+     */
+    size_t idx_child;
 
     /**
-     * Bit 0 determines whether trie contains the word formed by this and parent nodes or not.
-     * Bits 1-255 are set only in the first node in linked list and allow to check if the linked
-     * list contains the character or not without full scan.
+     * The bitmap acts as a fast-check filter to determine if a character may be present in the linked list.
+     * This is used only in the root of linked list.
      */
     size_t bitmap[256 / BITMAP_WORD_BITS];
 
@@ -291,83 +295,128 @@ struct trie_node
      * Stored character or \\0, if node is empty
      */
     unsigned char c;
-};
+
+    /*
+     * If set, stored character is the last symbol in the keyword
+     */
+    bool leaf;
+} __attribute__((aligned(64)));
 
 struct
 {
-    struct trie_node* mem;
-    size_t size;
-    size_t offset;
+    struct trie_node* nodes;
+    size_t capacity;
+    size_t length;
 } trie;
-
-void trie_expand()
-{
-    trie.size *= 2;
-    trie.mem = realloc_or_fatal(trie.mem, trie.size * TRIE_NODE_SIZE);
-}
 
 size_t trie_new_node()
 {
-    if (trie.size <= trie.offset)
-        trie_expand();
-    struct trie_node new_node;
-    new_node.idx_next = -1;
-    new_node.idx_child = -1;
-    memset(new_node.bitmap, 0, 32);
-    new_node.c = '\0';
-    trie.mem[trie.offset] = new_node;
-    return trie.offset++;
+    if (trie.capacity <= trie.length)
+    {
+        trie.capacity *= 2;
+        trie.nodes = realloc_or_fatal(trie.nodes, trie.capacity * TRIE_NODE_SIZE);
+    }
+    struct trie_node* node = &trie.nodes[trie.length];
+    memset(node, 0, TRIE_NODE_SIZE);
+    node->idx_next = TRIE_NULL_IDX;
+    node->idx_child = TRIE_NULL_IDX;
+    return trie.length++;
 }
 
 void trie_init()
 {
-    trie.size = TRIE_DEFAULT_SIZE;
-    trie.mem = malloc_or_fatal(trie.size * TRIE_NODE_SIZE);
+    trie.capacity = TRIE_INITIAL_CAPACITY;
+    trie.nodes = malloc_or_fatal(trie.capacity * TRIE_NODE_SIZE);
+    trie.length = 0;
     // Root node
     trie_new_node();
 }
 
-void trie_add(ssize_t idx, unsigned char* str, size_t length)
+size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
 {
+    size_t idx = idx_first;
+    while (idx != TRIE_NULL_IDX)
+    {
+        if (trie.nodes[idx].c == c || trie.nodes[idx].idx_next == TRIE_NULL_IDX)
+            return idx;
+        idx = trie.nodes[idx].idx_next;
+    }
+    return idx_first;
+}
+
+size_t trie_linked_list_add(size_t idx)
+{
+    size_t idx_new = trie_new_node();
+    trie.nodes[idx].idx_next = idx_new;
+    return idx_new;
+}
+
+size_t trie_child_add(size_t idx)
+{
+    size_t idx_new = trie_new_node();
+    trie.nodes[idx].idx_child = idx_new;
+    return idx_new;
+}
+
+void trie_add(struct string str)
+{
+    size_t idx = 0;
     while (true)
     {
-        unsigned char c = *str;
-        ssize_t idx_prev;
+        unsigned char c = str.data[0];
 
-        bitmap_set(trie.mem[idx].bitmap, c);
+        bitmap_set(trie.nodes[idx].bitmap, c);
 
         // Scan linked list inside the node
-        do
-        {
-            if (trie.mem[idx].c == '\0' || trie.mem[idx].c == c)
-            {
-                trie.mem[idx].c = c;
-                break;
-            }
-            idx_prev = idx;
-            idx = trie.mem[idx].idx_next;
-        }
-        while (idx >= 0);
-        
-        if (idx < 0)
+        idx = trie_linked_list_scan(idx, c);
+        if (trie.nodes[idx].c == '\0')
+            // The linked list is empty (contains only an empty node)
+                trie.nodes[idx].c = c;
+        else if (trie.nodes[idx].c != c)
         {
             // The symbol is not found in the node. Add to the linked list.
-            idx = trie_new_node();
-            trie.mem[idx_prev].idx_next = idx;
-            trie.mem[idx].c = c;
+            idx = trie_linked_list_add(idx);
+            trie.nodes[idx].c = c;
         }
-        if (length <= 1)
+
+        if (str.length <= 1)
         {
-            bitmap_set(trie.mem[idx].bitmap, 0);
+            trie.nodes[idx].leaf = true;
             return;
         }
-        if (trie.mem[idx].idx_child < 0)
-            trie.mem[idx].idx_child = trie_new_node();
+        if (trie.nodes[idx].idx_child == TRIE_NULL_IDX)
+            trie_child_add(idx);
 
         // Then go to the child node
-        idx = trie.mem[idx].idx_child;
-        str++;
-        length--;
+        idx = trie.nodes[idx].idx_child;
+        str = string_sub(str, 1, str.length - 1);
+    }
+}
+
+bool trie_find(struct string str)
+{
+    size_t idx = 0;
+    while (true)
+    {
+        unsigned char c = str.data[0];
+
+        if (!bitmap_get(trie.nodes[idx].bitmap, c))
+            return false;
+
+        // Scan linked list inside the node
+        idx = trie_linked_list_scan(idx, c);
+        struct trie_node node = trie.nodes[idx];
+        if (node.c != c)
+            return false;
+        if (node.leaf)
+            return true;
+        if (str.length <= 1)
+            return false;
+
+        // Then go to the child node
+        idx = node.idx_child;
+
+        str = string_sub(str, 1, str.length - 1);
     }
 }
 
@@ -389,14 +438,10 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
         if (case_insensitive)
             string_to_lower(substring, &substring);
 
-        unsigned char* str = substring.data;
-        size_t length = substring.length;
-        if (str[length - 1] == '\n')
-            str[--length] = '\0';
-        if (length > 0 && str[length - 1] == '\r')
-            str[--length] = '\0';
+        string_trim_end(&substring, '\n');
+        string_trim_end(&substring, '\r');
 
-        trie_add(0, str, length);
+        trie_add(substring);
     }
 
     close(file);
@@ -416,38 +461,7 @@ void trie_build_from_args(struct string* substrings, size_t substrings_count, bo
         if (case_insensitive)
             string_to_lower(substring, &substring);
 
-        trie_add(0, substring.data, substring.length);
-    }
-}
-
-bool trie_find(ssize_t idx, struct string str)
-{
-    while (true)
-    {
-        unsigned char c = *(str.data);
-
-        if (!bitmap_get(trie.mem[idx].bitmap, c))
-            return false;
-
-        // Scan linked list inside the node
-        do
-        {
-            if (trie.mem[idx].c == c)
-                break;
-            idx = trie.mem[idx].idx_next;
-        }
-        while (idx >= 0);
-        if (idx < 0)
-            return false;
-        if (bitmap_get(trie.mem[idx].bitmap, 0))
-            return true;
-        if (str.length <= 1)
-            return false;
-
-        // Then go to the child node
-        idx = trie.mem[idx].idx_child;
-
-        str = string_sub(str, 1, str.length - 1);
+        trie_add(substring);
     }
 }
 
@@ -455,10 +469,12 @@ bool trie_find_anywhere(struct string str)
 {
     string_trim_end(&str, '\n');
     string_trim_end(&str, '\r');
-    for (size_t i = 0; i < str.length; i++)
+    while (str.length > 0)
     {
-        if (trie_find(0, string_sub(str, i, str.length - i)))
+        bool found = trie_find(str);
+        if (found)
             return true;
+        str = string_sub(str, 1, str.length - 1);
     }
     return false;
 }
@@ -521,10 +537,15 @@ void print_ws(size_t length)
     printf("%s", buffer);
 }
 
+#define PRINT_PROGRESS_MIN_DIFF_BYTES 1024 * 1024
+
 void print_progress(size_t processed, size_t size, bool force)
 {
     static clock_t prevtime = 0;
+    static size_t prevprocessed = 0;
     static size_t prevlength = 0;
+    if (processed - prevprocessed < PRINT_PROGRESS_MIN_DIFF_BYTES && !force)
+        return;
     clock_t time = clock();
     if (prevtime == 0)
     {
@@ -543,8 +564,8 @@ void print_progress(size_t processed, size_t size, bool force)
         if (prevlength > length)
             print_ws(prevlength - length);
         prevtime = time;
+        prevprocessed = processed;
         prevlength = length;
-        prevtime = time;
     }
 }
 
