@@ -99,8 +99,8 @@ jobs:
 
       - name: Copy README and LICENSE
         run: |
-          cp ./README.md ./publish/npm/
           cp ./LICENSE ./publish/npm/
+          ./build/findany -sbadge.svg -simg.shields.io -v README.md > ./publish/npm/README.md
 
       - name: Set auth token
         run: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
@@ -133,7 +133,7 @@ jobs:
           cp -r ./build/* ./publish/pip/findany/bin/
 
       - name: Copy README
-        run: cp ./README.md ./publish/pip/
+        run: ./build/findany -sbadge.svg -simg.shields.io -v README.md > ./publish/pip/README.md
 
       - name: Install dependencies
         working-directory: ./publish/pip
