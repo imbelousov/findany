@@ -156,6 +156,10 @@ void string_expand(struct string* str, size_t min_length)
 
 struct string string_sub(const struct string str, size_t offset, size_t length)
 {
+    if (offset > str.length)
+        offset = str.length;
+    if (length > str.length - offset)
+        length = str.length - offset;
     struct string substring;
     substring.data = str.data + offset;
     substring.length = length;
