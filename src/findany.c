@@ -364,7 +364,6 @@ void trie_add(struct string str)
     while (true)
     {
         unsigned char c = str.data[0];
-        size_t idx_prev;
 
         bitmap_set(trie.nodes[idx].bitmap, c);
 
