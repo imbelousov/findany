@@ -300,7 +300,7 @@ struct trie_node
      * If set, stored character is the last symbol in the keyword
      */
     bool leaf;
-} __attribute__((aligned(64)));
+} __attribute__((aligned(__SIZEOF_POINTER__ * 8)));
 
 struct
 {
