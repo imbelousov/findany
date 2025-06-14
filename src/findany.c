@@ -327,6 +327,7 @@ void trie_init()
 {
     trie.capacity = TRIE_INITIAL_CAPACITY;
     trie.nodes = malloc_or_fatal(trie.capacity * TRIE_NODE_SIZE);
+    trie.length = 0;
     // Root node
     trie_new_node();
 }
