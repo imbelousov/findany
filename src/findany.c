@@ -273,6 +273,7 @@ bool bitmap_get(size_t* bitmap, size_t idx)
 #define TRIE_NODE_SIZE sizeof(struct trie_node)
 #define TRIE_NULL_IDX SIZE_MAX
 #define TRIE_NODE_LINKED_LIST_CHUNKS 4
+#define TRIE_NODE_LINKED_LIST_MASK (TRIE_NODE_LINKED_LIST_CHUNKS - 1)
 #define TRIE_BITMAP_SIZE 2
 #define TRIE_BITMAP_MASK (BITMAP_WORD_BITS * TRIE_BITMAP_SIZE - 1)
 
@@ -340,7 +341,7 @@ void trie_init()
 
 size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
 {
-    size_t chunk = c & (TRIE_NODE_LINKED_LIST_CHUNKS - 1);
+    size_t chunk = c & TRIE_NODE_LINKED_LIST_MASK;
     size_t idx = idx_first;
     while (idx != TRIE_NULL_IDX)
     {
@@ -353,7 +354,7 @@ size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
 
 size_t trie_linked_list_add(size_t idx, unsigned char c)
 {
-    size_t chunk = c & (TRIE_NODE_LINKED_LIST_CHUNKS - 1);
+    size_t chunk = c & TRIE_NODE_LINKED_LIST_MASK;
     size_t idx_new = trie_new_node();
     trie.nodes[idx].idx_next[chunk] = idx_new;
     return idx_new;
