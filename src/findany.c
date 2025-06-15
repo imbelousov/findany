@@ -315,7 +315,7 @@ struct
     size_t length;
 } trie;
 
-size_t trie_new_node()
+size_t trie_node_add()
 {
     if (trie.capacity <= trie.length)
     {
@@ -336,7 +336,7 @@ void trie_init()
     trie.nodes = malloc_or_fatal(trie.capacity * TRIE_NODE_SIZE);
     trie.length = 0;
     // Root node
-    trie_new_node();
+    trie_node_add();
 }
 
 size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
@@ -355,14 +355,14 @@ size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
 size_t trie_linked_list_add(size_t idx, unsigned char c)
 {
     size_t chunk = c & TRIE_NODE_LINKED_LIST_MASK;
-    size_t idx_new = trie_new_node();
+    size_t idx_new = trie_node_add();
     trie.nodes[idx].idx_next[chunk] = idx_new;
     return idx_new;
 }
 
 size_t trie_child_add(size_t idx)
 {
-    size_t idx_new = trie_new_node();
+    size_t idx_new = trie_node_add();
     trie.nodes[idx].idx_child = idx_new;
     return idx_new;
 }
@@ -435,8 +435,6 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
     if (file < 0)
         fatal("No access to file %s", substrings_filename);
 
-    trie_init();
-
     struct fstream stream = fstream_init(file);
     struct string buffer = string_init();
     while (true)
@@ -460,8 +458,6 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
 
 void trie_build_from_args(struct string* substrings, size_t substrings_count, bool case_insensitive)
 {
-    trie_init();
-
     for (size_t i = 0; i < substrings_count; i++)
     {
         struct string substring = substrings[i];
@@ -486,6 +482,12 @@ bool trie_find_anywhere(struct string str)
         str = string_sub(str, 1, str.length - 1);
     }
     return false;
+}
+
+void trie_destroy()
+{
+    free(trie.nodes);
+    trie.nodes = NULL;
 }
 
 void format_size(size_t size, char* buffer)
@@ -592,6 +594,7 @@ void handle_line(struct string line_for_search, struct string line_original, siz
 
 void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
 {
+    trie_init();
     if (substrings_filename != NULL)
         trie_build_from_file(substrings_filename, case_insensitive);
     else
@@ -670,6 +673,7 @@ void findany(unsigned char* substrings_filename, struct string* substrings, size
         close(input_file);
     if (output_need_close)
         close(output_file);
+    trie_destroy();
 }
 
 int main(int argc, char **argv)
