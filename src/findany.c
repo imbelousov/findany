@@ -272,13 +272,19 @@ bool bitmap_get(size_t* bitmap, size_t idx)
 #define TRIE_INITIAL_CAPACITY 64 * 1024
 #define TRIE_NODE_SIZE sizeof(struct trie_node)
 #define TRIE_NULL_IDX SIZE_MAX
+#define TRIE_NODE_LINKED_LIST_CHUNKS 4
+#define TRIE_NODE_LINKED_LIST_MASK (TRIE_NODE_LINKED_LIST_CHUNKS - 1)
+#define TRIE_BITMAP_SIZE 2
+#define TRIE_BITMAP_MASK (BITMAP_WORD_BITS * TRIE_BITMAP_SIZE - 1)
+
+#define nextpow2(x) (((size_t)1) << (32 - __builtin_clz(x - 1)))
 
 struct trie_node
 {
     /**
-     * Index of the next character in list
+     * Index of the next character in the linked list. The linked list is split into chunks to increase scan performance.
      */
-    size_t idx_next;
+    size_t idx_next[TRIE_NODE_LINKED_LIST_CHUNKS];
 
     /**
      * Index of the first child node
@@ -289,7 +295,7 @@ struct trie_node
      * The bitmap acts as a fast-check filter to determine if a character may be present in the linked list.
      * This is used only in the root of linked list.
      */
-    size_t bitmap[256 / BITMAP_WORD_BITS];
+    size_t bitmap[TRIE_BITMAP_SIZE];
 
     /**
      * Stored character or \\0, if node is empty
@@ -300,7 +306,7 @@ struct trie_node
      * If set, stored character is the last symbol in the keyword
      */
     bool leaf;
-} __attribute__((aligned(__SIZEOF_POINTER__ * 8)));
+}__attribute__((aligned(__SIZEOF_POINTER__ * nextpow2(TRIE_NODE_LINKED_LIST_CHUNKS + TRIE_BITMAP_SIZE))));
 
 struct
 {
@@ -309,7 +315,7 @@ struct
     size_t length;
 } trie;
 
-size_t trie_new_node()
+size_t trie_node_add()
 {
     if (trie.capacity <= trie.length)
     {
@@ -318,7 +324,8 @@ size_t trie_new_node()
     }
     struct trie_node* node = &trie.nodes[trie.length];
     memset(node, 0, TRIE_NODE_SIZE);
-    node->idx_next = TRIE_NULL_IDX;
+    for (size_t i = 0; i < TRIE_NODE_LINKED_LIST_CHUNKS; i++)
+        node->idx_next[i] = TRIE_NULL_IDX;
     node->idx_child = TRIE_NULL_IDX;
     return trie.length++;
 }
@@ -329,31 +336,33 @@ void trie_init()
     trie.nodes = malloc_or_fatal(trie.capacity * TRIE_NODE_SIZE);
     trie.length = 0;
     // Root node
-    trie_new_node();
+    trie_node_add();
 }
 
 size_t trie_linked_list_scan(size_t idx_first, unsigned char c)
 {
+    size_t chunk = c & TRIE_NODE_LINKED_LIST_MASK;
     size_t idx = idx_first;
     while (idx != TRIE_NULL_IDX)
     {
-        if (trie.nodes[idx].c == c || trie.nodes[idx].idx_next == TRIE_NULL_IDX)
+        if (trie.nodes[idx].c == c || trie.nodes[idx].idx_next[chunk] == TRIE_NULL_IDX)
             return idx;
-        idx = trie.nodes[idx].idx_next;
+        idx = trie.nodes[idx].idx_next[chunk];
     }
     return idx_first;
 }
 
-size_t trie_linked_list_add(size_t idx)
+size_t trie_linked_list_add(size_t idx, unsigned char c)
 {
-    size_t idx_new = trie_new_node();
-    trie.nodes[idx].idx_next = idx_new;
+    size_t chunk = c & TRIE_NODE_LINKED_LIST_MASK;
+    size_t idx_new = trie_node_add();
+    trie.nodes[idx].idx_next[chunk] = idx_new;
     return idx_new;
 }
 
 size_t trie_child_add(size_t idx)
 {
-    size_t idx_new = trie_new_node();
+    size_t idx_new = trie_node_add();
     trie.nodes[idx].idx_child = idx_new;
     return idx_new;
 }
@@ -365,7 +374,7 @@ void trie_add(struct string str)
     {
         unsigned char c = str.data[0];
 
-        bitmap_set(trie.nodes[idx].bitmap, c);
+        bitmap_set(trie.nodes[idx].bitmap, c & TRIE_BITMAP_MASK);
 
         // Scan linked list inside the node
         idx = trie_linked_list_scan(idx, c);
@@ -375,7 +384,7 @@ void trie_add(struct string str)
         else if (trie.nodes[idx].c != c)
         {
             // The symbol is not found in the node. Add to the linked list.
-            idx = trie_linked_list_add(idx);
+            idx = trie_linked_list_add(idx, c);
             trie.nodes[idx].c = c;
         }
 
@@ -400,7 +409,7 @@ bool trie_find(struct string str)
     {
         unsigned char c = str.data[0];
 
-        if (!bitmap_get(trie.nodes[idx].bitmap, c))
+        if (!bitmap_get(trie.nodes[idx].bitmap, c & TRIE_BITMAP_MASK))
             return false;
 
         // Scan linked list inside the node
@@ -426,8 +435,6 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
     if (file < 0)
         fatal("No access to file %s", substrings_filename);
 
-    trie_init();
-
     struct fstream stream = fstream_init(file);
     struct string buffer = string_init();
     while (true)
@@ -451,8 +458,6 @@ void trie_build_from_file(unsigned char* substrings_filename, bool case_insensit
 
 void trie_build_from_args(struct string* substrings, size_t substrings_count, bool case_insensitive)
 {
-    trie_init();
-
     for (size_t i = 0; i < substrings_count; i++)
     {
         struct string substring = substrings[i];
@@ -477,6 +482,12 @@ bool trie_find_anywhere(struct string str)
         str = string_sub(str, 1, str.length - 1);
     }
     return false;
+}
+
+void trie_destroy()
+{
+    free(trie.nodes);
+    trie.nodes = NULL;
 }
 
 void format_size(size_t size, char* buffer)
@@ -583,6 +594,7 @@ void handle_line(struct string line_for_search, struct string line_original, siz
 
 void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
 {
+    trie_init();
     if (substrings_filename != NULL)
         trie_build_from_file(substrings_filename, case_insensitive);
     else
@@ -661,6 +673,7 @@ void findany(unsigned char* substrings_filename, struct string* substrings, size
         close(input_file);
     if (output_need_close)
         close(output_file);
+    trie_destroy();
 }
 
 int main(int argc, char **argv)
