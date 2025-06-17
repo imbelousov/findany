@@ -380,7 +380,7 @@ void trie_add(struct string str)
         idx = trie_linked_list_scan(idx, c);
         if (trie.nodes[idx].c == '\0')
             // The linked list is empty (contains only an empty node)
-                trie.nodes[idx].c = c;
+            trie.nodes[idx].c = c;
         else if (trie.nodes[idx].c != c)
         {
             // The symbol is not found in the node. Add to the linked list.
