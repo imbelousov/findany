@@ -98,6 +98,8 @@ cat input.txt | findany substrings.txt > output.txt
 findany -s mySubstring -s otherSubstring < input.txt > output.txt
 ```
 
+More examples are available in the [test cases folder](https://github.com/imbelousov/findany/tree/main/test/cases).
+
 ## License
 
 This program is licensed under the GNU General Public License v3.0. See the `LICENSE` file for more details.
