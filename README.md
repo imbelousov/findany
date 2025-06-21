@@ -13,6 +13,7 @@ A command-line utility that retains only those lines from a text file or standar
 - Writes filtered lines to standard output or redirects them to a text file.
 - Optional case-insensitive search.
 - Optional inversion of search.
+- Optionally prints only the first matched substring instead of the entire line (incompatible with inverted search).
 - Supports binary files.
 - Progress bar to show search progress when processing large files, if the output is redirected to a file.
 - Runs on Windows and Linux.
