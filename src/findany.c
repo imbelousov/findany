@@ -272,9 +272,9 @@ bool bitmap_get(size_t* bitmap, size_t idx)
 #define TRIE_INITIAL_CAPACITY 64 * 1024
 #define TRIE_NODE_SIZE sizeof(struct trie_node)
 #define TRIE_NULL_IDX SIZE_MAX
-#define TRIE_NODE_LINKED_LIST_CHUNKS 4
+#define TRIE_NODE_LINKED_LIST_CHUNKS 2
 #define TRIE_NODE_LINKED_LIST_MASK (TRIE_NODE_LINKED_LIST_CHUNKS - 1)
-#define TRIE_BITMAP_SIZE 2
+#define TRIE_BITMAP_SIZE 4
 #define TRIE_BITMAP_MASK (BITMAP_WORD_BITS * TRIE_BITMAP_SIZE - 1)
 
 #define nextpow2(x) (((size_t)1) << (32 - __builtin_clz(x - 1)))
