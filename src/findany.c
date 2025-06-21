@@ -306,7 +306,7 @@ struct trie_node
      * If set, stored character is the last symbol in the keyword
      */
     bool leaf;
-}__attribute__((aligned(__SIZEOF_POINTER__ * nextpow2(TRIE_NODE_LINKED_LIST_CHUNKS + TRIE_BITMAP_SIZE))));
+} __attribute__((aligned(sizeof(size_t) * nextpow2(TRIE_NODE_LINKED_LIST_CHUNKS + TRIE_BITMAP_SIZE))));
 
 struct
 {
@@ -400,6 +400,22 @@ void trie_add(struct string str)
         idx = trie.nodes[idx].idx_child;
         str = string_sub(str, 1, str.length - 1);
     }
+}
+
+void trie_trim()
+{
+    if (trie.length == trie.capacity)
+        return;
+    trie.capacity = trie.length;
+    struct trie_node* trimmed = malloc(TRIE_NODE_SIZE * trie.capacity);
+    if (trimmed != NULL)
+    {
+        memcpy(trimmed, trie.nodes, TRIE_NODE_SIZE * trie.capacity);
+        free(trie.nodes);
+        trie.nodes = trimmed;
+    }
+    else
+        trie.nodes = realloc_or_fatal(trie.nodes, TRIE_NODE_SIZE * trie.capacity);
 }
 
 bool trie_find(struct string str)
@@ -599,6 +615,7 @@ void findany(unsigned char* substrings_filename, struct string* substrings, size
         trie_build_from_file(substrings_filename, case_insensitive);
     else
         trie_build_from_args(substrings, substrings_count, case_insensitive);
+    trie_trim();
 
     // Initialize input
     int input_file = STDIN_FILENO;
