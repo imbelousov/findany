@@ -1,0 +1,14 @@
+cmd: findany -m -o output substrings input
+
+substrings: ["first", "second"]
+
+input:
+- This is the first string
+- This is the second string
+- This is the third string
+
+assert:
+  output:
+  - first
+  - second
+  - ""

@@ -42,6 +42,7 @@ const struct option long_options[] = {
     {"invert", no_argument, NULL, 'v'},
     {"output", required_argument, NULL, 'o'},
     {"substring", required_argument, NULL, 's'},
+    {"print-match", no_argument, NULL, 'm'},
     {"help", no_argument, NULL, 'h'},
     {NULL, 0, NULL, 0}
 };
@@ -67,6 +68,8 @@ void print_help()
     printf("                               It enables a progress-bar.\n");
     printf("  -s, --substring SUBSTRING    Receive a substring from a command-line argument instead of a file. It can be\n");
     printf("                               used multiple times. Must not be used together with the SUBSTRINGS argument.\n");
+    printf("  -m, --print-match            Print only the first matched substring instead of the entire line.\n");
+    printf("                               Cannot be used together with the --invert option.\n");
     printf("  -h, --help                   Display the help message and exit.\n");
 }
 
@@ -127,6 +130,14 @@ void* realloc_or_fatal(void* memory, size_t new_size)
     return memory;
 }
 
+int write_or_fatal(int file, void* buf, unsigned int max_char_count)
+{
+    int result = write(file, buf, max_char_count);
+    if (result < 0)
+        fatal("Failed to write");
+    return result;
+}
+
 struct string
 {
     unsigned char* data;
@@ -156,10 +167,6 @@ void string_expand(struct string* str, size_t min_length)
 
 struct string string_sub(const struct string str, size_t offset, size_t length)
 {
-    if (offset > str.length)
-        offset = str.length;
-    if (length > str.length - offset)
-        length = str.length - offset;
     struct string substring;
     substring.data = str.data + offset;
     substring.length = length;
@@ -418,12 +425,13 @@ void trie_trim()
         trie.nodes = realloc_or_fatal(trie.nodes, TRIE_NODE_SIZE * trie.capacity);
 }
 
-bool trie_find(struct string str)
+size_t trie_match_str(struct string str)
 {
     size_t idx = 0;
+    size_t i = 0;
     while (true)
     {
-        unsigned char c = str.data[0];
+        unsigned char c = str.data[i];
 
         if (!bitmap_get(trie.nodes[idx].bitmap, c & TRIE_BITMAP_MASK))
             return false;
@@ -432,17 +440,18 @@ bool trie_find(struct string str)
         idx = trie_linked_list_scan(idx, c);
         struct trie_node node = trie.nodes[idx];
         if (node.c != c)
-            return false;
+            return 0;
         if (node.leaf)
-            return true;
-        if (str.length <= 1)
-            return false;
+            return i + 1;
+        if (str.length - i <= 1)
+            return 0;
 
         // Then go to the child node
         idx = node.idx_child;
 
-        str = string_sub(str, 1, str.length - 1);
+        i++;
     }
+    return 0;
 }
 
 void trie_build_from_file(unsigned char* substrings_filename, bool case_insensitive)
@@ -486,18 +495,25 @@ void trie_build_from_args(struct string* substrings, size_t substrings_count, bo
     }
 }
 
-bool trie_find_anywhere(struct string str)
+struct trie_match {
+    size_t offset;
+    size_t length;
+};
+
+struct trie_match trie_find_match(struct string str)
 {
     string_trim_end(&str, '\n');
     string_trim_end(&str, '\r');
-    while (str.length > 0)
+    struct trie_match match;
+    match.offset = 0;
+    match.length = 0;
+    for (; match.offset < str.length; match.offset++)
     {
-        bool found = trie_find(str);
-        if (found)
-            return true;
-        str = string_sub(str, 1, str.length - 1);
+        match.length = trie_match_str(string_sub(str, match.offset, str.length - match.offset));
+        if (match.length > 0)
+            return match;
     }
-    return false;
+    return match;
 }
 
 void trie_destroy()
@@ -596,19 +612,27 @@ void print_progress(size_t processed, size_t size, bool force)
     }
 }
 
-void handle_line(struct string line_for_search, struct string line_original, size_t input_size, int output_file, unsigned char* output_filename, bool invert, size_t* progress)
+void handle_line(struct string line_for_search, struct string line_original, size_t input_size, int output_file, unsigned char* output_filename, bool invert, bool print_match, size_t* progress)
 {
-    if (trie_find_anywhere(line_for_search) ^ invert)
+    struct trie_match match = trie_find_match(line_for_search);
+    bool matches = match.length > 0;
+    if (matches ^ invert)
     {
-        if (write(output_file, line_original.data, line_original.length) < 0)
-            fatal("Failed to write");
+        if (print_match)
+        {
+            struct string match_str = string_sub(line_original, match.offset, match.length);
+            write_or_fatal(output_file, match_str.data, match_str.length);
+            write_or_fatal(output_file, "\n", 1);
+        }
+        else
+            write_or_fatal(output_file, line_original.data, line_original.length);
     }
     *progress += line_original.length;
     if (output_filename != NULL)
         print_progress(*progress, input_size, false);
 }
 
-void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert)
+void findany(unsigned char* substrings_filename, struct string* substrings, size_t substrings_count, unsigned char* input_filename, unsigned char* output_filename, bool case_insensitive, bool invert, bool print_match)
 {
     trie_init();
     if (substrings_filename != NULL)
@@ -664,7 +688,7 @@ void findany(unsigned char* substrings_filename, struct string* substrings, size
             if (line.length == 0)
                 break;
             string_to_lower(line, &lower_buffer);
-            handle_line(string_sub(lower_buffer, 0, line.length), line, input_size, output_file, output_filename, invert, &progress);
+            handle_line(string_sub(lower_buffer, 0, line.length), line, input_size, output_file, output_filename, invert, print_match, &progress);
         }
         string_destroy(&lower_buffer);
     }
@@ -675,7 +699,7 @@ void findany(unsigned char* substrings_filename, struct string* substrings, size
             struct string line = fstream_read_line(&input_stream, &buffer, '\n');
             if (line.length == 0)
                 break;
-            handle_line(line, line, input_size, output_file, output_filename, invert, &progress);
+            handle_line(line, line, input_size, output_file, output_filename, invert, print_match, &progress);
         }
     }
     if (output_filename != NULL)
@@ -704,6 +728,7 @@ int main(int argc, char **argv)
     unsigned char* output_filename = NULL;
     bool case_insensitive = false;
     bool invert = false;
+    bool print_match = false;
 
     if (argc <= 1)
     {
@@ -713,7 +738,7 @@ int main(int argc, char **argv)
     else
     {
         int optc;
-        while ((optc = getopt_long(argc, argv, "hivo:s:", long_options, NULL)) != -1)
+        while ((optc = getopt_long(argc, argv, "hivo:s:m", long_options, NULL)) != -1)
         {
             switch (optc)
             {
@@ -739,10 +764,20 @@ int main(int argc, char **argv)
                 substrings[substrings_count++] = substring;
                 break;
 
+            case 'm':
+                print_match = true;
+                break;
+
             default:
                 print_usage();
                 exit(EXIT_FAILURE);
             }
+        }
+
+        if (print_match && invert)
+        {
+            print_usage();
+            exit(EXIT_FAILURE);
         }
 
         switch (argc - optind)
@@ -770,6 +805,6 @@ int main(int argc, char **argv)
         }
     }
 
-    findany(substrings_filename, substrings, substrings_count, input_filename, output_filename, case_insensitive, invert);
+    findany(substrings_filename, substrings, substrings_count, input_filename, output_filename, case_insensitive, invert, print_match);
     exit(EXIT_SUCCESS);
 }
