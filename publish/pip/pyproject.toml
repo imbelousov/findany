@@ -1,6 +1,6 @@
 [project]
 name = "findany"
-version = "1.2.0"
+version = "1.2.1"
 authors = [
   {name="Igor Belousov", email="imbelousov66@gmail.com"}
 ]
