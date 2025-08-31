@@ -22,7 +22,7 @@ jobs:
         run: mkdir ./build
 
       - name: Build Linux
-        run: gcc -msse4.1 -flto -O3 ./src/findany.c -o ./build/findany
+        run: gcc -msse4.1 -flto -O3 -static ./src/findany.c -o ./build/findany
 
       - name: Build Windows
         run: x86_64-w64-mingw32-gcc -msse4.1 -flto -O3 ./src/findany.c -o ./build/findany
